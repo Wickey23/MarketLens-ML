@@ -1,20 +1,25 @@
 name: daily-market-research
-
 on:
   workflow_dispatch:
   schedule:
     - cron: "30 22 * * 1-5"
-
+permissions:
+  contents: write
 jobs:
   research:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements.txt
-      - run: python -m src.train
-      - run: python -m src.predict
+          cache: pip
+      - run: pip install -r requirements-ml.txt
+      - run: python -m src.export_dashboard
+      - name: Commit refreshed research data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f data/dashboard.json
+          git diff --cached --quiet || git commit -m "Update daily MarketLens research data"
+          git push
