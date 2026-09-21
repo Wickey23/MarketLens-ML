@@ -1,0 +1,7 @@
+tickers:
+  - SPY
+  - VOO
+start_date: "2010-01-01"
+forecast_horizon_days: 5
+transaction_cost_bps: 5
+random_state: 42
