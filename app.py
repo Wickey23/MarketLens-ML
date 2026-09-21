@@ -1,29 +1,20 @@
 from flask import Flask, jsonify, render_template_string
 from datetime import datetime, timezone
-
-app = Flask(__name__)
-
-HTML = r"""<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>MarketLens ML</title>
-<style>
-:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;font-family:Inter,ui-sans-serif,system-ui;background:#080b10;color:#f4f7fb}.wrap{max-width:1180px;margin:auto;padding:28px}.nav{display:flex;justify-content:space-between;align-items:center;margin-bottom:54px}.brand{font-weight:800;font-size:21px;letter-spacing:-.5px}.pill{border:1px solid #263142;border-radius:999px;padding:8px 12px;color:#9fb0c7;font-size:12px}.hero h1{font-size:54px;line-height:1.02;letter-spacing:-2.5px;max-width:800px;margin:0 0 18px}.hero p{color:#91a0b5;font-size:18px;max-width:680px;line-height:1.6}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:42px}.card{background:#0e131b;border:1px solid #1c2635;border-radius:18px;padding:20px;min-height:150px}.ticker{color:#8fa0b7;font-size:13px}.value{font-size:29px;font-weight:750;margin-top:18px}.muted{color:#728198;font-size:12px;margin-top:8px}.status{margin-top:30px;border-top:1px solid #1a2230;padding-top:22px;color:#728198;font-size:13px}@media(max-width:800px){.grid{grid-template-columns:1fr 1fr}.hero h1{font-size:40px}}@media(max-width:480px){.grid{grid-template-columns:1fr}}
-</style></head>
-<body><main class="wrap"><nav class="nav"><div class="brand">MarketLens <span style="color:#718096">ML</span></div><div class="pill">Research Engine · V1</div></nav>
-<section class="hero"><h1>Market intelligence built around probabilities, not predictions.</h1><p>Machine-learning research for trend detection, regime classification and out-of-sample testing. MarketLens separates model signals from demonstrated historical performance.</p></section>
-<section class="grid">
-<div class="card"><div class="ticker">SPY · 5 DAY</div><div class="value">Pipeline Active</div><div class="muted">Walk-forward model</div></div>
-<div class="card"><div class="ticker">MARKET REGIME</div><div class="value">Analyzing</div><div class="muted">Trend + volatility</div></div>
-<div class="card"><div class="ticker">VALIDATION</div><div class="value">Walk Forward</div><div class="muted">No random train/test split</div></div>
-<div class="card"><div class="ticker">MODELS</div><div class="value">2 Active</div><div class="muted">Logistic · Random Forest</div></div>
-</section><div class="status">Live web shell deployed from GitHub main · ML data integration in progress · Research only</div></main></body></html>"""
-
+from pathlib import Path
+import json
+app=Flask(__name__)
+DATA=Path(__file__).with_name("data")/"dashboard.json"
+HTML=r"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MarketLens ML</title><script src="https://cdn.jsdelivr.net/npm/chart.js"></script><style>
+:root{color-scheme:dark;--bg:#070a0f;--p:#0d121a;--l:#1c2635;--m:#8190a5;--t:#f3f6fa}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--t);font-family:Inter,system-ui}.w{max-width:1250px;margin:auto;padding:26px}.nav{display:flex;justify-content:space-between}.brand{font-size:21px;font-weight:800}.badge,.tab{border:1px solid var(--l);border-radius:999px;padding:8px 12px;color:#a9b5c5;font-size:12px}.hero{margin:55px 0 28px}.hero h1{font-size:46px;letter-spacing:-2px;margin:0 0 12px}.hero p,.sub,.foot{color:var(--m)}.tabs{display:flex;gap:8px;margin:24px 0;flex-wrap:wrap}.tab{cursor:pointer;background:transparent}.tab.active{background:#e9eef5;color:#090c11}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:13px}.card,.box{background:var(--p);border:1px solid var(--l);border-radius:16px;padding:18px}.label{color:var(--m);font-size:11px;letter-spacing:.08em}.value{font-size:27px;font-weight:760;margin-top:13px}.sub{font-size:12px;margin-top:7px}.main{display:grid;grid-template-columns:2fr 1fr;gap:13px;margin-top:13px}.chart{height:350px}.table{margin-top:13px;overflow:auto}table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:12px;border-bottom:1px solid var(--l)}th{color:var(--m);font-weight:500}.foot{font-size:11px;line-height:1.6;margin:24px 0}@media(max-width:850px){.grid{grid-template-columns:1fr 1fr}.main{grid-template-columns:1fr}}@media(max-width:480px){.grid{grid-template-columns:1fr}}
+</style></head><body><main class="w"><nav class="nav"><div class="brand">MarketLens <span style="color:#718096">ML</span></div><div class="badge" id="updated">Loading…</div></nav><section class="hero"><h1>Probabilistic market research.</h1><p>Leakage-aware walk-forward validation, regime detection and multi-model signals. Probabilities are model outputs, not guarantees.</p></section><div class="tabs" id="tabs"></div><section class="grid"><div class="card"><div class="label">LATEST PRICE</div><div class="value" id="price">—</div><div class="sub" id="returns">—</div></div><div class="card"><div class="label">5-DAY UP PROBABILITY</div><div class="value" id="prob">—</div><div class="sub">Two-model ensemble</div></div><div class="card"><div class="label">MARKET REGIME</div><div class="value" id="regime" style="font-size:18px">—</div><div class="sub">Trend + realized volatility</div></div><div class="card"><div class="label">20-DAY VOLATILITY</div><div class="value" id="vol">—</div><div class="sub" id="rsi">—</div></div></section><section class="main"><div class="box chart"><canvas id="chart"></canvas></div><div class="card"><div class="label">MODEL PROBABILITIES</div><div id="models"></div><div class="label" style="margin-top:25px">252-DAY DRAWDOWN</div><div class="value" id="dd">—</div></div></section><section class="box table"><div class="label">OUT-OF-SAMPLE WALK-FORWARD METRICS</div><table><thead><tr><th>Model</th><th>Accuracy</th><th>F1</th><th>ROC AUC</th><th>Brier ↓</th><th>N</th></tr></thead><tbody id="metrics"></tbody></table></section><div class="foot">Research and education only. Historical out-of-sample results do not guarantee future performance. Five-day labels are embargoed until outcomes are observable.</div></main><script>
+let P,C,ch;const pc=x=>x==null?'—':(x*100).toFixed(1)+'%';const money=x=>x==null?'—':'$'+Number(x).toLocaleString(undefined,{maximumFractionDigits:2});async function load(){let r=await fetch('/api/data');P=await r.json();updated.textContent='Updated '+new Date(P.generated_at).toLocaleString();P.tickers.forEach((x,i)=>{let b=document.createElement('button');b.className='tab'+(i?'':' active');b.textContent=x.ticker;b.onclick=()=>sel(x.ticker,b);tabs.appendChild(b)});if(P.tickers.length)sel(P.tickers[0].ticker,tabs.children[0]);else updated.textContent='Waiting for first research run'}function sel(t,b){C=P.tickers.find(x=>x.ticker===t);document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');price.textContent=money(C.price);returns.textContent='1D '+pc(C.change_1d)+' · 5D '+pc(C.change_5d);prob.textContent=pc(C.probability_5d_up);regime.textContent=C.regime;vol.textContent=pc(C.volatility_20d);rsi.textContent='RSI 14: '+(C.rsi_14==null?'—':C.rsi_14.toFixed(1));dd.textContent=pc(C.drawdown_252);models.innerHTML=Object.entries(C.model_probabilities).map(([k,v])=>'<div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #1c2635"><span>'+k.replace('_',' ')+'</span><b>'+pc(v)+'</b></div>').join('');metrics.innerHTML=C.metrics.map(m=>'<tr><td>'+m.model.replace('_',' ')+'</td><td>'+pc(m.accuracy)+'</td><td>'+pc(m.f1)+'</td><td>'+(m.roc_auc==null?'—':m.roc_auc.toFixed(3))+'</td><td>'+(m.brier==null?'—':m.brier.toFixed(3))+'</td><td>'+m.observations+'</td></tr>').join('');draw()}function draw(){if(ch)ch.destroy();ch=new Chart(chart,{type:'line',data:{labels:C.history.map(x=>x.date),datasets:[{label:C.ticker+' close',data:C.history.map(x=>x.close),borderWidth:2,pointRadius:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#8190a5'}}},scales:{x:{ticks:{color:'#657489',maxTicksLimit:8},grid:{display:false}},y:{ticks:{color:'#657489'},grid:{color:'#151d29'}}}}})}load();
+</script></body></html>"""
+def read_data():
+    if DATA.exists(): return json.loads(DATA.read_text())
+    return {"generated_at":datetime.now(timezone.utc).isoformat(),"horizon_days":5,"tickers":[],"errors":["Awaiting first research run"]}
 @app.get("/")
-def home():
-    return render_template_string(HTML)
-
+def home(): return render_template_string(HTML)
+@app.get("/api/data")
+def data(): return jsonify(read_data())
 @app.get("/api/health")
-def health():
-    return jsonify({"status":"ok","service":"MarketLens-ML","time":datetime.now(timezone.utc).isoformat()})
+def health(): return jsonify({"status":"ok","time":datetime.now(timezone.utc).isoformat()})
