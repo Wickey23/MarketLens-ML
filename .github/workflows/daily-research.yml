@@ -1,6 +1,12 @@
 name: daily-market-research
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "requirements-ml.txt"
+      - ".github/workflows/daily-research.yml"
   schedule:
     - cron: "0 15 * * 1-5"
     - cron: "30 17 * * 1-5"
