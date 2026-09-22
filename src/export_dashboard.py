@@ -35,8 +35,18 @@ def analyze(ticker):
     # Similar historical setups: +/- 2.5 percentage points around today's ensemble output.
     sm=np.abs(ep-current)<=.025; sn=int(sm.sum())
     similar={"observations":sn,"actual_up_rate":sf(ey[sm].mean()) if sn else None,"mean_forward_return":sf(er[sm].mean()) if sn else None,"median_forward_return":sf(np.median(er[sm])) if sn else None,"base_up_rate":base}
+    # Evidence card: describes the data without issuing a buy/sell instruction.
+    aucs=[m["roc_auc"] for m in metrics if m["roc_auc"] is not None]; mean_auc=sf(np.mean(aucs)) if aucs else None
+    agreement=sf(1-abs(mp["logistic"]-mp["random_forest"])) if len(mp)==2 else None
+    lift=sf(similar["actual_up_rate"]-base) if similar["actual_up_rate"] is not None and base is not None else None
+    if mean_auc is None: quality="Not available"
+    elif mean_auc>=.58: quality="Stronger historical discrimination"
+    elif mean_auc>=.53: quality="Modest historical discrimination"
+    else: quality="Weak historical discrimination"
+    evidence={"validation_quality":quality,"mean_roc_auc":mean_auc,"model_agreement":agreement,"historical_lift":lift,"similar_sample_size":sn,
+      "notes":["Model output is not a calibrated real-world probability.","Compare signal lift with the unconditional base rate.","Give more weight to signals only when validation and sample size support them."]}
     close=raw["Close"]; daily=close.pct_change()
-    return {"ticker":ticker,"as_of":str(raw.index[-1].date()),"price":sf(close.iloc[-1]),"change_1d":sf(daily.iloc[-1]),"change_5d":sf(close.pct_change(5).iloc[-1]),"probability_5d_up":current,"model_probabilities":mp,"regime":str(classify_regime(raw).iloc[-1]),"volatility_20d":sf(daily.rolling(20).std().iloc[-1]*np.sqrt(252)),"rsi_14":sf(latest["rsi_14"]),"drawdown_252":sf(latest["drawdown_252"]),"base_up_rate":base,"similar_setups":similar,"calibration_buckets":bucket_stats(ep,ey,er),"metrics":metrics,"history":[{"date":str(i.date()),"close":sf(v)} for i,v in close.tail(180).items()]}
+    return {"ticker":ticker,"as_of":str(raw.index[-1].date()),"price":sf(close.iloc[-1]),"change_1d":sf(daily.iloc[-1]),"change_5d":sf(close.pct_change(5).iloc[-1]),"probability_5d_up":current,"model_probabilities":mp,"regime":str(classify_regime(raw).iloc[-1]),"volatility_20d":sf(daily.rolling(20).std().iloc[-1]*np.sqrt(252)),"rsi_14":sf(latest["rsi_14"]),"drawdown_252":sf(latest["drawdown_252"]),"base_up_rate":base,"similar_setups":similar,"evidence":evidence,"calibration_buckets":bucket_stats(ep,ey,er),"metrics":metrics,"history":[{"date":str(i.date()),"close":sf(v)} for i,v in close.tail(180).items()]}
 def main():
     p={"generated_at":datetime.now(timezone.utc).isoformat(),"horizon_days":HORIZON,"tickers":[],"errors":[]}
     for t in TICKERS:
