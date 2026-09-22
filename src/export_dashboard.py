@@ -70,7 +70,7 @@ def analyze(ticker):
         horizons[str(h)]={"mean_return":sf(rr.mean()),"median_return":sf(rr.median()),"positive_rate":sf((rr>0).mean()),"p10":sf(rr.quantile(.10)),"p25":sf(rr.quantile(.25)),"p75":sf(rr.quantile(.75)),"p90":sf(rr.quantile(.90)),"realized_move_1sd":sf(daily.rolling(252).std().iloc[-1]*sqrt(h))}
     options={"status":"Historical distribution + delayed option chain active","horizons":horizons,"realized_vol_20d":sf(daily.rolling(20).std().iloc[-1]*sqrt(252))}
     try:
-        options["chain"]=option_snapshot(ticker,float(close.iloc[-1]))
+        options["chain"]=option_snapshot(ticker,float(close.iloc[-1]),options["realized_vol_20d"])
     except Exception as e:
         options["chain"]={"error":str(e),"contracts":[],"quote_note":"Option chain unavailable for this run."}
     return {"ticker":ticker,"as_of":str(raw.index[-1].date()),"price":sf(close.iloc[-1]),"change_1d":sf(daily.iloc[-1]),"change_5d":sf(close.pct_change(5).iloc[-1]),"probability_5d_up":current,"model_probabilities":mp,"regime":str(classify_regime(raw).iloc[-1]),"volatility_20d":sf(daily.rolling(20).std().iloc[-1]*np.sqrt(252)),"rsi_14":sf(latest["rsi_14"]),"drawdown_252":sf(latest["drawdown_252"]),"base_up_rate":base,"similar_setups":similar,"evidence":evidence,"options":options,"calibration_buckets":bucket_stats(ep,ey,er),"metrics":metrics,"history":[{"date":str(i.date()),"close":sf(v)} for i,v in close.tail(180).items()]}
