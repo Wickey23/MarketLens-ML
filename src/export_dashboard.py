@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 from sklearn.base import clone
 from sklearn.metrics import accuracy_score,brier_score_loss,f1_score,roc_auc_score
+from math import sqrt
 from src.data_loader import download_prices
 from src.features import add_target,build_features
 from src.regime import classify_regime
@@ -21,6 +22,10 @@ def bucket_stats(p,y,r):
         m=(p>=lo)&(p<hi); n=int(m.sum())
         if n: out.append({"bucket":f"{int(lo*100)}-{int(min(hi,1)*100)}%","n":n,"actual_up_rate":sf(y[m].mean()),"mean_forward_return":sf(r[m].mean())})
     return out
+def wilson(k,n,z=1.96):
+    if not n:return [None,None]
+    p=k/n; d=1+z*z/n; center=(p+z*z/(2*n))/d; half=z*sqrt((p*(1-p)+z*z/(4*n))/n)/d
+    return [sf(center-half),sf(center+half)]
 def analyze(ticker):
     raw=download_prices(ticker,"2010-01-01"); feat=build_features(raw); lab=add_target(feat,HORIZON).dropna(subset=FEATURES+["target"])
     latest=feat.dropna(subset=FEATURES).iloc[-1]; probs=[]; mp={}; metrics=[]
@@ -35,6 +40,11 @@ def analyze(ticker):
     # Similar historical setups: +/- 2.5 percentage points around today's ensemble output.
     sm=np.abs(ep-current)<=.025; sn=int(sm.sum())
     similar={"observations":sn,"actual_up_rate":sf(ey[sm].mean()) if sn else None,"mean_forward_return":sf(er[sm].mean()) if sn else None,"median_forward_return":sf(np.median(er[sm])) if sn else None,"base_up_rate":base}
+    ci=wilson(int(ey[sm].sum()),sn) if sn else [None,None]; similar["up_rate_ci95"]=ci
+    if sn:
+        wins=er[sm][er[sm]>0]; losses=er[sm][er[sm]<0]
+        similar["avg_gain"]=sf(wins.mean()) if len(wins) else None; similar["avg_loss"]=sf(losses.mean()) if len(losses) else None
+        similar["best_return"]=sf(er[sm].max()); similar["worst_return"]=sf(er[sm].min())
     # Evidence card: describes the data without issuing a buy/sell instruction.
     aucs=[m["roc_auc"] for m in metrics if m["roc_auc"] is not None]; mean_auc=sf(np.mean(aucs)) if aucs else None
     agreement=sf(1-abs(mp["logistic"]-mp["random_forest"])) if len(mp)==2 else None
@@ -45,6 +55,12 @@ def analyze(ticker):
     else: quality="Weak historical discrimination"
     evidence={"validation_quality":quality,"mean_roc_auc":mean_auc,"model_agreement":agreement,"historical_lift":lift,"similar_sample_size":sn,
       "notes":["Model output is not a calibrated real-world probability.","Compare signal lift with the unconditional base rate.","Give more weight to signals only when validation and sample size support them."]}
+    # Descriptive evidence state; deliberately not a buy/sell recommendation.
+    if mean_auc is None or mean_auc<.53: evidence["state"]="Insufficient validated edge"
+    elif sn<100: evidence["state"]="Limited comparable history"
+    elif lift is not None and lift>0: evidence["state"]="Historically favorable setup"
+    elif lift is not None and lift<0: evidence["state"]="Historically unfavorable setup"
+    else: evidence["state"]="Historically neutral setup"
     close=raw["Close"]; daily=close.pct_change()
     return {"ticker":ticker,"as_of":str(raw.index[-1].date()),"price":sf(close.iloc[-1]),"change_1d":sf(daily.iloc[-1]),"change_5d":sf(close.pct_change(5).iloc[-1]),"probability_5d_up":current,"model_probabilities":mp,"regime":str(classify_regime(raw).iloc[-1]),"volatility_20d":sf(daily.rolling(20).std().iloc[-1]*np.sqrt(252)),"rsi_14":sf(latest["rsi_14"]),"drawdown_252":sf(latest["drawdown_252"]),"base_up_rate":base,"similar_setups":similar,"evidence":evidence,"calibration_buckets":bucket_stats(ep,ey,er),"metrics":metrics,"history":[{"date":str(i.date()),"close":sf(v)} for i,v in close.tail(180).items()]}
 def main():
