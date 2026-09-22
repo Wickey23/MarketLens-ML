@@ -2,9 +2,15 @@ name: daily-market-research
 on:
   workflow_dispatch:
   schedule:
+    - cron: "0 15 * * 1-5"
+    - cron: "30 17 * * 1-5"
+    - cron: "15 20 * * 1-5"
     - cron: "30 22 * * 1-5"
 permissions:
   contents: write
+concurrency:
+  group: marketlens-research
+  cancel-in-progress: false
 jobs:
   research:
     runs-on: ubuntu-latest
@@ -20,6 +26,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull --rebase
           git add -f data/dashboard.json
-          git diff --cached --quiet || git commit -m "Update daily MarketLens research data"
+          git diff --cached --quiet || git commit -m "Update MarketLens research data"
           git push
