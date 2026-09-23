@@ -284,7 +284,7 @@ function renderOptions(){
   renderChain();
 }
 function contractScore(x){
- if(!x||!x.mid||x.mid<=0||x.dte==null)return null;
+ if(!x||!x.mid||x.mid<=0||x.dte==null||Number(x.dte)<1||x.bid==null||x.ask==null||Number(x.bid)<=0||Number(x.ask)<=0||Number(x.ask)<Number(x.bid))return null;
  const spread=x.spread_pct==null?1:Number(x.spread_pct),oi=Number(x.open_interest||0),v=Number(x.volume||0),theta=Math.abs(Number(x.theta_cost_pct_per_day||0)),be=Math.abs(Number(x.breakeven_move||0)),ivr=Number(x.iv_rv_ratio||1),dte=Number(x.dte||0);
  const liquidity=Math.min(25,(oi>=1000?14:oi>=250?9:4)+(v>=1000?11:v>=100?7:2)),execution=spread<=.02?20:spread<=.05?15:spread<=.10?9:spread<=.15?4:0,decay=dte===0?0:theta<=.03?20:theta<=.06?14:theta<=.10?8:theta<=.15?3:0,volatility=ivr<=.9?15:ivr<=1.05?11:ivr<=1.2?7:3,breakeven=be<=.005?12:be<=.01?9:be<=.02?5:2,time=dte>=5&&dte<=45?8:dte>=2?5:0;
  return {score:liquidity+execution+decay+volatility+breakeven+time,parts:['liquidity '+liquidity+'/25','execution '+execution+'/20','decay '+decay+'/20','IV/RV '+volatility+'/15','breakeven '+breakeven+'/12','time '+time+'/8']};
@@ -352,7 +352,7 @@ function paperBuyingPower(s){
 function paperTrade(){
  if(!selectedContract||!C)return;
  const x=selectedContract,s=paperState(),qty=Math.max(1,Number(paperQty.value||1)),orderType=paperOrderType.value;
- const market=(x.ask&&x.ask>0)?Number(x.ask):Number(x.mid||0);
+ const market=(x.ask&&x.ask>0)?Number(x.ask):0;
  const limit=orderType==='limit'?Number(paperLimit.value||0):null;
  const price=orderType==='limit'?limit:market;
  if(!price||price<=0){runStatus.textContent='Enter a usable order price';return}
@@ -380,7 +380,7 @@ function submitPaperOrder(){
      runStatus.textContent='Limit paper order pending';
    }
  }else{
-   const fill=q&&q.ask&&q.ask>0?Number(q.ask):Number(q&&q.mid||o.requested_price),cost=fill*100*o.qty;
+   const fill=q&&q.ask&&q.ask>0?Number(q.ask):0,cost=fill*100*o.qty;
    if(!fill||cost>buying){runStatus.textContent='No usable fill or insufficient buying power';return}
    const {requested_price,order_type,...p}=o;s.open.push({...p,entry_price:fill,opened_at:new Date().toISOString()});
    runStatus.textContent='Market paper order filled';
@@ -412,7 +412,7 @@ function historicalSpotOnOrBefore(t,date){
 function lookupMark(p){
  const t=(P.tickers||[]).find(x=>x.ticker===p.ticker);if(!t)return{mark:null,spot:null};
  const rows=((((t.options||{}).chain||{}).contracts)||[]);const x=rows.find(z=>(p.contract_symbol&&z.contract_symbol===p.contract_symbol)||(!p.contract_symbol&&z.type===p.type&&z.strike===p.strike&&z.expiration===p.expiration));
- if(x)return{mark:(x.bid&&x.bid>0)?x.bid:x.mid,spot:t.price};
+ if(x)return{mark:(x.bid&&x.bid>0)?Number(x.bid):null,indicative:x.mid,spot:(t.live_price!=null?t.live_price:t.price)};
  const expired=new Date(p.expiration+'T23:59:59Z')<new Date();
  if(expired){const expirySpot=historicalSpotOnOrBefore(t,p.expiration);if(expirySpot!=null){const intrinsic=Math.max(p.type==='call'?expirySpot-p.strike:p.strike-expirySpot,0);return{mark:intrinsic,spot:expirySpot,settled:true}}}
  return{mark:null,spot:t.price};
