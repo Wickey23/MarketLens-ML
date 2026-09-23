@@ -97,7 +97,7 @@ def quick_snapshot(ticker):
     }
 
 
-def merge(old,new):
+def merge(old,new,learning=None):
     # Preserve expensive walk-forward evidence while replacing time-sensitive market/event/options fields.
     keep=["probability_5d_up","model_probabilities","base_up_rate","similar_setups","evidence","relative_strength","plain_language","calibration_buckets","metrics","research_refreshed_at"]
     for k in keep:
@@ -106,7 +106,7 @@ def merge(old,new):
     try:
         raw=download_prices(new["ticker"],"2010-01-01")
         regimes=classify_regime(raw)
-        new["options"]["opportunity_radar"]=build_opportunity_radar(raw,((new["options"].get("chain") or {}).get("contracts") or []),regimes,new.get("regime"),new.get("evidence") or {},float(new["price"]))
+        new["options"]["opportunity_radar"]=build_opportunity_radar(raw,((new["options"].get("chain") or {}).get("contracts") or []),regimes,new.get("regime"),new.get("evidence") or {},float(new["price"]),learning=learning)
     except Exception as exc:
         new["options"]["opportunity_radar"]={"state":"unavailable","opportunities":[],"watchlist":[],"error":str(exc)}
     return new
@@ -120,7 +120,7 @@ def main():
     errors=[]
     for t in tickers:
         try:
-            by[t]=merge(by.get(t,{}),quick_snapshot(t))
+            by[t]=merge(by.get(t,{}),quick_snapshot(t),current_learning)
         except Exception as e:
             errors.append({"ticker":t,"error":str(e)})
     p["tickers"]=list(by.values())
