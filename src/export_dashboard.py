@@ -340,6 +340,7 @@ def load_existing():
 
 
 def main():
+    current_learning=learning_profile(load_state())
     requested=(os.getenv("MARKETLENS_TICKER") or "").strip().upper()
     if requested:
         tickers=[requested]
