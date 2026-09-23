@@ -27,19 +27,24 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+      - name: Load persistent market state
+        run: |
+          git fetch origin market-data
+          git show origin/market-data:data/dashboard.json > data/dashboard.json || true
+          git show origin/market-data:data/ai_paper_portfolio.json > data/ai_paper_portfolio.json || true
       - run: pip install -r requirements-ml.txt
       - run: python -m src.export_dashboard
-      - name: Commit refreshed research data
+      - name: Commit refreshed research data to market-data branch
         run: |
+          cp data/dashboard.json /tmp/dashboard.json
+          cp data/ai_paper_portfolio.json /tmp/ai_paper_portfolio.json
+          git reset --hard
+          git fetch origin market-data
+          git checkout -B market-data origin/market-data
+          cp /tmp/dashboard.json data/dashboard.json
+          cp /tmp/ai_paper_portfolio.json data/ai_paper_portfolio.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -f data/dashboard.json data/ai_paper_portfolio.json
           git diff --cached --quiet || git commit -m "Update MarketLens research data"
-          for i in 1 2 3; do
-            git push && exit 0
-            git fetch origin main
-            git rebase origin/main && continue
-            git rebase --abort || true
-            sleep 2
-          done
-          exit 1
+          git push origin HEAD:market-data
