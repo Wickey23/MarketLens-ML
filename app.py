@@ -57,6 +57,7 @@ table{width:100%;border-collapse:collapse;font-size:12px;min-width:900px}th,td{t
   <button class="tab active" onclick="showView('research',this)">Research</button>
   <button class="tab" onclick="showView('options',this)">Options Lab</button>
   <button class="tab" onclick="showView('sim',this)">Simulator</button>
+  <button class="tab" onclick="showView('ai',this)">AI Portfolio</button>
 </div>
 <div class="tickerTabs" id="tabs"></div>
 
@@ -138,11 +139,18 @@ table{width:100%;border-collapse:collapse;font-size:12px;min-width:900px}th,td{t
 <div class="value" id="replayResult" style="font-size:20px">—</div><div class="sub" id="replayText">—</div></section>
 </section>
 
+<section id="aiView" class="view">
+<section class="grid"><div class="card"><div class="label">AI PAPER EQUITY</div><div class="value" id="aiEquity">—</div><div class="sub">Started with $10,000 simulated capital</div></div><div class="card"><div class="label">TOTAL P/L</div><div class="value" id="aiPnl">—</div></div><div class="card"><div class="label">WIN RATE</div><div class="value" id="aiWin">—</div><div class="sub" id="aiTrades">—</div></div><div class="card"><div class="label">MAX DRAWDOWN</div><div class="value" id="aiDd">—</div></div></section>
+<section class="grid2" style="margin-top:12px"><div class="box chart"><div class="label">AI PORTFOLIO EQUITY</div><canvas id="aiChart"></canvas></div><div class="box"><div class="label">OPPORTUNITY INBOX</div><div class="sub">Only setups clearing the research thresholds appear here.</div><div id="aiInbox"></div></div></section>
+<section class="box table"><div class="label">OPEN AI PAPER POSITIONS</div><table><thead><tr><th>Ticker</th><th>Contract</th><th>Qty</th><th>Entry</th><th>Mark</th><th>P/L</th><th>Score</th><th>Why</th></tr></thead><tbody id="aiOpen"></tbody></table></section>
+<section class="box table"><div class="label">AI DECISION LOG</div><table><thead><tr><th>Time</th><th>Ticker</th><th>Contract</th><th>Decision</th><th>Qty</th><th>Price</th><th>Score</th><th>Reason</th></tr></thead><tbody id="aiDecisions"></tbody></table></section>
+<section class="box table"><div class="label">CLOSED AI PAPER TRADES</div><table><thead><tr><th>Ticker</th><th>Contract</th><th>Entry</th><th>Exit</th><th>P/L</th><th>Exit reason</th><th>Opened</th><th>Closed</th></tr></thead><tbody id="aiClosed"></tbody></table></section></section>
+
 <div class="foot">Research and education only. MarketLens separates model evidence from the decision you make. Options can lose 100% of premium. Quotes may be delayed. Greeks and scenario values are model estimates; verify live quotes and contract details with your brokerage before acting.</div>
 </main>
 
 <script>
-let P,C,ch,selectedContract;
+let P,C,ch,selectedContract,aiCh;
 const pc=x=>x==null?'—':(Number(x)*100).toFixed(1)+'%';
 const money=x=>x==null?'—':'$'+Number(x).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
 const num=(x,d=2)=>x==null?'—':Number(x).toFixed(d);
@@ -153,6 +161,7 @@ function showView(v,b){
   document.querySelectorAll('.navtabs .tab').forEach(x=>x.classList.remove('active'));
   document.getElementById(v+'View').classList.add('active'); b.classList.add('active');
   if(v==='sim')renderPaper();
+  if(v==='ai')renderAI();
 }
 async function runResearch(ticker=null){
   const b=document.getElementById('runBtn'),s=document.getElementById('runStatus');
@@ -195,7 +204,7 @@ async function load(){
 function sel(t,b){
   C=P.tickers.find(x=>x.ticker===t);selectedContract=null;contractPanel.classList.remove('active');
   document.querySelectorAll('.tickerTabs .tab').forEach(x=>x.classList.remove('active'));if(b)b.classList.add('active');
-  tickerInput.value=t;renderResearch();renderOptions();renderPaper();renderReplay();
+  tickerInput.value=t;renderResearch();renderOptions();renderPaper();renderReplay();renderAI();
 }
 function renderResearch(){
   price.textContent=money(C.price);returns.textContent='1D '+pc(C.change_1d)+' · 5D '+pc(C.change_5d);prob.textContent=pc(C.probability_5d_up);
