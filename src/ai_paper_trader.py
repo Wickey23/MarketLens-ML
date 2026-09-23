@@ -53,7 +53,7 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
         pnl_pct=((mark/p["entry_price"])-1) if mark is not None and p["entry_price"]>0 else None
         today=now[:10]
         reason=None
-        if p["expiration"]<=today: reason="expiration"
+        if p["expiration"]<=today:\n            reason="expiration"\n            if mark is None:\n                t=tickers.get(p["ticker"]) or {}\n                spot=t.get("price")\n                if spot is not None:\n                    intrinsic=max(0.0,float(spot)-float(p["strike"])) if p["type"]=="call" else max(0.0,float(p["strike"])-float(spot))\n                    mark=intrinsic\n                    pnl_pct=((mark/p["entry_price"])-1) if p["entry_price"]>0 else None
         elif pnl_pct is not None and pnl_pct>=.50: reason="profit_target"
         elif pnl_pct is not None and pnl_pct<=-.35: reason="risk_limit"
         if reason and mark is not None:
