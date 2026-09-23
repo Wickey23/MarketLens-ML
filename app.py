@@ -28,7 +28,7 @@ HTML = r"""<!doctype html>
 .card,.box{background:var(--p);border:1px solid var(--l);border-radius:15px;padding:17px}.label{color:var(--m);font-size:10px;letter-spacing:.09em}.value{font-size:25px;font-weight:760;margin-top:10px}.sub{font-size:12px;margin-top:6px;line-height:1.5}
 .main{display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-top:12px}.chart{height:320px}.table{margin-top:12px;overflow:auto}
 table{width:100%;border-collapse:collapse;font-size:12px;min-width:900px}th,td{text-align:left;padding:10px;border-bottom:1px solid var(--l);white-space:nowrap}th{color:var(--m);font-weight:500;position:sticky;top:0;background:var(--p)}
-.good{color:var(--good)}.warn{color:var(--warn)}.bad{color:var(--bad)}.blue{color:var(--blue)}
+.good{color:var(--good)}.warn{color:var(--warn)}.bad{color:var(--bad)}.blue{color:var(--blue)}.bestrow{background:rgba(110,231,168,.08)}.besttag{display:inline-block;border:1px solid var(--good);color:var(--good);border-radius:999px;padding:4px 7px;font-size:10px;font-weight:800}
 .kv{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--l)}.kv:last-child{border-bottom:0}
 .explain{line-height:1.55;font-size:13px}.explain li{margin:8px 0}.newsitem{padding:12px 0;border-bottom:1px solid var(--l)}.newsitem a{color:#dbe8ff;text-decoration:none}.newsitem a:hover{text-decoration:underline}
 .panel{background:var(--p2);border:1px solid var(--l);border-radius:13px;padding:14px}.contractPanel{display:none;margin-top:12px}.contractPanel.active{display:block}
@@ -213,10 +213,17 @@ function renderOptions(){
   expFilter.innerHTML='<option value="all">All expirations</option>'+(oc.expirations||[]).map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('');
   renderChain();
 }
+function contractScore(x){
+ if(!x||!x.mid||x.mid<=0||x.dte==null)return null;
+ const spread=x.spread_pct==null?1:Number(x.spread_pct),oi=Number(x.open_interest||0),v=Number(x.volume||0),theta=Math.abs(Number(x.theta_cost_pct_per_day||0)),be=Math.abs(Number(x.breakeven_move||0)),ivr=Number(x.iv_rv_ratio||1),dte=Number(x.dte||0);
+ const liquidity=Math.min(25,(oi>=1000?14:oi>=250?9:4)+(v>=1000?11:v>=100?7:2)),execution=spread<=.02?20:spread<=.05?15:spread<=.10?9:spread<=.15?4:0,decay=dte===0?0:theta<=.03?20:theta<=.06?14:theta<=.10?8:theta<=.15?3:0,volatility=ivr<=.9?15:ivr<=1.05?11:ivr<=1.2?7:3,breakeven=be<=.005?12:be<=.01?9:be<=.02?5:2,time=dte>=5&&dte<=45?8:dte>=2?5:0;
+ return {score:liquidity+execution+decay+volatility+breakeven+time,parts:['liquidity '+liquidity+'/25','execution '+execution+'/20','decay '+decay+'/20','IV/RV '+volatility+'/15','breakeven '+breakeven+'/12','time '+time+'/8']};
+}
 function renderChain(){
-  const oc=(C.options||{}).chain||{},typ=typeFilter.value,exp=expFilter.value;
-  let rows=(oc.contracts||[]).filter(x=>(typ==='all'||x.type===typ)&&(exp==='all'||x.expiration===exp));
-  chainRows.innerHTML=rows.slice(0,120).map((x,i)=>'<tr><td><button class="btn" onclick="selectContract(\''+esc(x.contract_symbol||'')+'\','+JSON.stringify(x.strike)+',\''+x.type+'\',\''+x.expiration+'\')">Analyze</button></td><td>'+x.type+'</td><td>'+x.expiration+'</td><td>'+x.dte+'</td><td>'+money(x.strike)+'</td><td>'+money(x.bid)+'</td><td>'+money(x.ask)+'</td><td>'+money(x.mid)+'</td><td>'+pc(x.iv)+'</td><td>'+num(x.delta,3)+'</td><td>'+num(x.gamma,4)+'</td><td>'+money(x.theta_per_contract_per_day)+'</td><td>'+money(x.vega_per_contract_per_vol_point)+'</td><td>'+money(x.breakeven)+'</td><td>'+pc(x.breakeven_move)+'</td><td>'+x.open_interest+'</td><td>'+x.volume+'</td><td>'+pc(x.spread_pct)+'</td></tr>').join('');
+ const oc=(C.options||{}).chain||{},typ=typeFilter.value,exp=expFilter.value;let rows=(oc.contracts||[]).filter(x=>(typ==='all'||x.type===typ)&&(exp==='all'||x.expiration===exp));
+ const ranked=rows.map(x=>({x,r:contractScore(x)})).filter(z=>z.r).sort((a,b)=>b.r.score-a.r.score),best=ranked[0];
+ if(best){const x=best.x,r=best.r;bestOptionBox.innerHTML='<div class="label">FACT-BASED CONTRACT HIGHLIGHT</div><div class="value" style="font-size:20px">'+esc(C.ticker)+' '+esc(x.expiration)+' '+money(x.strike)+' '+esc(x.type.toUpperCase())+' <span class="besttag">TOP SCREEN '+r.score+'/100</span></div><div class="sub">Ranks contract mechanics only: liquidity, spread, modeled decay, IV versus realized volatility, breakeven distance and time to expiration. It does not decide market direction or tell you to buy. '+esc(r.parts.join(' · '))+'</div><button class="btn" style="margin-top:9px" onclick="selectContract(\\''+esc(x.contract_symbol||'')+'\\','+JSON.stringify(x.strike)+',\\''+x.type+'\\',\\''+x.expiration+'\\')">Analyze highlighted contract</button>';}else bestOptionBox.innerHTML='<div class="label">FACT-BASED CONTRACT HIGHLIGHT</div><div class="sub">No contract currently passes the screen.</div>';
+ chainRows.innerHTML=rows.slice(0,120).map(x=>{const isBest=best&&x===best.x;return '<tr class="'+(isBest?'bestrow':'')+'"><td>'+(isBest?'<span class="besttag">TOP SCREEN</span> ':'')+'<button class="btn" onclick="selectContract(\\''+esc(x.contract_symbol||'')+'\\','+JSON.stringify(x.strike)+',\\''+x.type+'\\',\\''+x.expiration+'\\')">Analyze</button></td><td>'+x.type+'</td><td>'+x.expiration+'</td><td>'+x.dte+'</td><td>'+money(x.strike)+'</td><td>'+money(x.bid)+'</td><td>'+money(x.ask)+'</td><td>'+money(x.mid)+'</td><td>'+pc(x.iv)+'</td><td>'+num(x.delta,3)+'</td><td>'+num(x.gamma,4)+'</td><td>'+money(x.theta_per_contract_per_day)+'</td><td>'+money(x.vega_per_contract_per_vol_point)+'</td><td>'+money(x.breakeven)+'</td><td>'+pc(x.breakeven_move)+'</td><td>'+x.open_interest+'</td><td>'+x.volume+'</td><td>'+pc(x.spread_pct)+'</td></tr>'}).join('');
 }
 function selectContract(sym,strike,type,exp){
   const rows=(((C.options||{}).chain||{}).contracts||[]);
