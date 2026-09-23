@@ -1,8 +1,9 @@
-from flask import Flask, jsonify, render_template_string
+from flask import Flask, jsonify, render_template_string, request
 from datetime import datetime, timezone
 from pathlib import Path
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 
@@ -17,89 +18,263 @@ HTML = r"""<!doctype html>
 <title>MarketLens ML</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-:root{color-scheme:dark;--bg:#070a0f;--p:#0d121a;--l:#1c2635;--m:#8190a5;--t:#f3f6fa}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--t);font-family:Inter,system-ui}
-.w{max-width:1280px;margin:auto;padding:26px}.nav{display:flex;justify-content:space-between;gap:12px;align-items:center}
-.brand{font-size:21px;font-weight:800}.badge,.tab{border:1px solid var(--l);border-radius:999px;padding:8px 12px;color:#a9b5c5;font-size:12px;background:transparent}
-.tab{cursor:pointer}.tab.active{background:#e9eef5;color:#090c11}.hero{margin:44px 0 24px}.hero h1{font-size:44px;letter-spacing:-2px;margin:0 0 10px}
-.hero p,.sub,.foot{color:var(--m)}.tabs{display:flex;gap:8px;margin:20px 0;flex-wrap:wrap}
-.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:13px}.card,.box{background:var(--p);border:1px solid var(--l);border-radius:16px;padding:18px}
-.label{color:var(--m);font-size:11px;letter-spacing:.08em}.value{font-size:26px;font-weight:760;margin-top:12px}.sub{font-size:12px;margin-top:7px}
-.main{display:grid;grid-template-columns:2fr 1fr;gap:13px;margin-top:13px}.chart{height:340px}.table{margin-top:13px;overflow:auto}
-table{width:100%;border-collapse:collapse;font-size:13px;min-width:760px}th,td{text-align:left;padding:11px;border-bottom:1px solid var(--l);white-space:nowrap}
-th{color:var(--m);font-weight:500}.foot{font-size:11px;line-height:1.6;margin:24px 0}
-@media(max-width:850px){.grid{grid-template-columns:1fr 1fr}.main{grid-template-columns:1fr}.nav{align-items:flex-start;flex-direction:column}}
-@media(max-width:480px){.grid{grid-template-columns:1fr}}
+:root{color-scheme:dark;--bg:#070a0f;--p:#0d121a;--p2:#111823;--l:#1c2635;--m:#8190a5;--t:#f3f6fa;--good:#6ee7a8;--warn:#f5c76b;--bad:#ff8b8b;--blue:#8bb7ff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--t);font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif}.w{max-width:1380px;margin:auto;padding:24px}
+.nav{display:flex;justify-content:space-between;gap:12px;align-items:center;position:sticky;top:0;background:rgba(7,10,15,.94);backdrop-filter:blur(12px);z-index:10;padding:10px 0}
+.brand{font-size:21px;font-weight:800}.badge,.btn,.tab,.input,.select{border:1px solid var(--l);border-radius:10px;padding:9px 12px;color:#c0cad8;font-size:12px;background:#0a0f16}.btn,.tab{cursor:pointer}.btn:hover,.tab:hover{border-color:#38506f}.btn.primary,.tab.active{background:#e9eef5;color:#090c11;border-color:#e9eef5}
+.search{display:flex;gap:8px;flex-wrap:wrap}.input{min-width:150px;text-transform:uppercase}.hero{margin:34px 0 18px}.hero h1{font-size:42px;letter-spacing:-1.7px;margin:0 0 8px}.hero p,.sub,.foot,.muted{color:var(--m)}
+.navtabs,.tickerTabs{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.view{display:none}.view.active{display:block}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.card,.box{background:var(--p);border:1px solid var(--l);border-radius:15px;padding:17px}.label{color:var(--m);font-size:10px;letter-spacing:.09em}.value{font-size:25px;font-weight:760;margin-top:10px}.sub{font-size:12px;margin-top:6px;line-height:1.5}
+.main{display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-top:12px}.chart{height:320px}.table{margin-top:12px;overflow:auto}
+table{width:100%;border-collapse:collapse;font-size:12px;min-width:900px}th,td{text-align:left;padding:10px;border-bottom:1px solid var(--l);white-space:nowrap}th{color:var(--m);font-weight:500;position:sticky;top:0;background:var(--p)}
+.good{color:var(--good)}.warn{color:var(--warn)}.bad{color:var(--bad)}.blue{color:var(--blue)}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--l)}.kv:last-child{border-bottom:0}
+.explain{line-height:1.55;font-size:13px}.explain li{margin:8px 0}.newsitem{padding:12px 0;border-bottom:1px solid var(--l)}.newsitem a{color:#dbe8ff;text-decoration:none}.newsitem a:hover{text-decoration:underline}
+.panel{background:var(--p2);border:1px solid var(--l);border-radius:13px;padding:14px}.contractPanel{display:none;margin-top:12px}.contractPanel.active{display:block}
+.controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.range{width:180px}.small{font-size:11px}.pill{display:inline-block;border:1px solid var(--l);border-radius:999px;padding:5px 8px;margin:3px;font-size:11px;color:#aebbd0}
+.statline{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;margin-top:12px}.stat{background:#0b1119;border:1px solid var(--l);padding:11px;border-radius:11px}
+.right{text-align:right}.foot{font-size:11px;line-height:1.6;margin:22px 0}.empty{padding:26px;color:var(--m);text-align:center}
+@media(max-width:950px){.grid{grid-template-columns:1fr 1fr}.grid3,.grid2,.main{grid-template-columns:1fr}.statline{grid-template-columns:1fr 1fr}.nav{align-items:flex-start;flex-direction:column;position:static}.hero h1{font-size:34px}}
+@media(max-width:520px){.grid{grid-template-columns:1fr}.w{padding:14px}.statline{grid-template-columns:1fr}}
 </style>
 </head>
 <body><main class="w">
-<nav class="nav"><div class="brand">MarketLens <span style="color:#718096">ML</span></div>
-<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="tab" id="runBtn" onclick="runResearch()">Run research</button><div class="badge" id="runStatus">Ready</div><div class="badge" id="updated">Loading…</div></div></nav>
-<section class="hero"><h1>Probabilistic market and options research.</h1><p>Walk-forward validation, regime detection, historical calibration and contract-level options research.</p></section>
-<div class="tabs" id="tabs"></div>
+<nav class="nav">
+  <div class="brand">MarketLens <span style="color:#718096">ML</span></div>
+  <div class="search">
+    <input class="input" id="tickerInput" maxlength="8" placeholder="TSLA, NVDA, AAPL">
+    <button class="btn primary" onclick="analyzeTicker()">Analyze ticker</button>
+    <button class="btn" id="runBtn" onclick="runResearch()">Refresh current</button>
+    <span class="badge" id="runStatus">Ready</span>
+    <span class="badge" id="updated">Loading…</span>
+  </div>
+</nav>
+
+<section class="hero"><h1>Options research that explains itself.</h1><p>Evidence, events, Greeks, contract economics and paper trading — separated from the decision you make.</p></section>
+
+<div class="navtabs">
+  <button class="tab active" onclick="showView('research',this)">Research</button>
+  <button class="tab" onclick="showView('options',this)">Options Lab</button>
+  <button class="tab" onclick="showView('sim',this)">Simulator</button>
+</div>
+<div class="tickerTabs" id="tabs"></div>
+
+<section id="researchView" class="view active">
 <section class="grid">
 <div class="card"><div class="label">LATEST PRICE</div><div class="value" id="price">—</div><div class="sub" id="returns">—</div></div>
-<div class="card"><div class="label">5-DAY UP MODEL OUTPUT</div><div class="value" id="prob">—</div><div class="sub">Ensemble output, not a guarantee</div></div>
-<div class="card"><div class="label">MARKET REGIME</div><div class="value" id="regime" style="font-size:18px">—</div><div class="sub">Trend + realized volatility</div></div>
+<div class="card"><div class="label">5-DAY UP MODEL OUTPUT</div><div class="value" id="prob">—</div><div class="sub">Model output, not a guaranteed probability</div></div>
+<div class="card"><div class="label">MARKET REGIME</div><div class="value" id="regime" style="font-size:18px">—</div><div class="sub" id="relative">—</div></div>
 <div class="card"><div class="label">20-DAY VOLATILITY</div><div class="value" id="vol">—</div><div class="sub" id="rsi">—</div></div>
 </section>
-<section class="main"><div class="box chart"><canvas id="chart"></canvas></div><div class="card"><div class="label">MODEL PROBABILITIES</div><div id="models"></div><div class="label" style="margin-top:25px">252-DAY DRAWDOWN</div><div class="value" id="dd">—</div></div></section>
-<section class="box" style="margin-top:13px"><div class="label">DECISION EVIDENCE</div><div class="value" id="estate" style="font-size:22px">—</div><div class="sub" id="evidenceNote">—</div></section>
-<section class="grid" style="margin-top:13px">
+<section class="main"><div class="box chart"><canvas id="chart"></canvas></div><div class="card"><div class="label">MODEL PROBABILITIES</div><div id="models"></div><div class="label" style="margin-top:22px">252-DAY DRAWDOWN</div><div class="value" id="dd">—</div></div></section>
+<section class="grid2" style="margin-top:12px">
+<div class="box"><div class="label">MARKETLENS EXPLAINS</div><ul class="explain" id="plain"></ul></div>
+<div class="box"><div class="label">DECISION EVIDENCE</div><div class="value" id="estate" style="font-size:21px">—</div><div class="sub" id="evidenceNote">—</div><div id="evidenceMore" style="margin-top:12px"></div></div>
+</section>
+<section class="grid" style="margin-top:12px">
 <div class="card"><div class="label">HISTORICAL BASE RATE</div><div class="value" id="base">—</div></div>
 <div class="card"><div class="label">SIMILAR SIGNALS</div><div class="value" id="simrate">—</div><div class="sub" id="simn">—</div></div>
 <div class="card"><div class="label">SIMILAR SETUP AVG RETURN</div><div class="value" id="simret">—</div></div>
 <div class="card"><div class="label">SIGNAL LIFT VS BASE</div><div class="value" id="lift">—</div></div>
 </section>
-<section class="box table"><div class="label">OPTIONS LAB · UNDERLYING DISTRIBUTION</div><div class="sub" id="optstatus">—</div>
-<table><thead><tr><th>Horizon</th><th>Positive rate</th><th>Median return</th><th>10th pct</th><th>90th pct</th><th>1σ move</th></tr></thead><tbody id="optionsRows"></tbody></table></section>
-<section class="box table"><div class="label">OPTION CHAIN RESEARCH</div><div class="sub" id="chainNote">—</div>
-<table><thead><tr><th>Type</th><th>Expiration</th><th>DTE</th><th>Strike</th><th>Mid</th><th>IV</th><th>Breakeven</th><th>BE move</th><th>OI</th><th>Volume</th><th>Spread</th><th>IV/RV</th><th>BE prob*</th><th>Max debit risk</th><th>Flags</th></tr></thead><tbody id="chainRows"></tbody></table></section>
+<section class="grid2" style="margin-top:12px">
+<div class="box"><div class="label">EARNINGS & CATALYST RISK</div><div class="value" id="earnings" style="font-size:20px">—</div><div class="sub" id="catalysts">—</div></div>
+<div class="box"><div class="label">RECENT NEWS CONTEXT</div><div id="news"></div></div>
+</section>
 <section class="box table"><div class="label">OUT-OF-SAMPLE WALK-FORWARD METRICS</div>
 <table><thead><tr><th>Model</th><th>Accuracy</th><th>F1</th><th>ROC AUC</th><th>Brier ↓</th><th>N</th></tr></thead><tbody id="metrics"></tbody></table></section>
-<div class="foot">Research and education only. Historical results and model outputs do not guarantee future performance. *Breakeven probability is a realized-volatility benchmark, not a calibrated forecast.</div>
+</section>
+
+<section id="optionsView" class="view">
+<section class="grid3">
+<div class="card"><div class="label">REALIZED VOL · 20D</div><div class="value" id="optRV">—</div></div>
+<div class="card"><div class="label">NEAREST ATM STRADDLE MOVE</div><div class="value" id="atmMove">—</div><div class="sub" id="atmExp">—</div></div>
+<div class="card"><div class="label">EARNINGS</div><div class="value" id="optEarnings" style="font-size:20px">—</div></div>
+</section>
+<section class="box table"><div class="label">UNDERLYING HISTORICAL DISTRIBUTION</div><div class="sub" id="optstatus">—</div>
+<table><thead><tr><th>Horizon</th><th>Positive rate</th><th>Median</th><th>10th pct</th><th>25th pct</th><th>75th pct</th><th>90th pct</th><th>1σ move</th></tr></thead><tbody id="optionsRows"></tbody></table></section>
+<section class="box table">
+<div class="controls"><div><div class="label">OPTION CHAIN</div><div class="sub" id="chainNote">—</div></div>
+<select id="typeFilter" class="select" onchange="renderChain()"><option value="all">Calls + puts</option><option value="call">Calls</option><option value="put">Puts</option></select>
+<select id="expFilter" class="select" onchange="renderChain()"><option value="all">All expirations</option></select></div>
+<table><thead><tr><th></th><th>Type</th><th>Exp</th><th>DTE</th><th>Strike</th><th>Bid</th><th>Ask</th><th>Mid</th><th>IV</th><th>Delta</th><th>Gamma</th><th>Theta/day*</th><th>Vega/1pt*</th><th>Breakeven</th><th>BE move</th><th>OI</th><th>Volume</th><th>Spread</th></tr></thead><tbody id="chainRows"></tbody></table>
+</section>
+<section id="contractPanel" class="box contractPanel">
+<div class="controls"><div><div class="label">CONTRACT ANALYZER</div><div class="value" id="contractTitle" style="font-size:21px">—</div></div><button class="btn primary" onclick="paperTrade()">Paper trade 1 contract</button></div>
+<div class="statline" id="contractStats"></div>
+<div class="grid2" style="margin-top:12px">
+<div class="panel"><div class="label">IN PLAIN ENGLISH</div><ul class="explain" id="contractExplain"></ul></div>
+<div class="panel"><div class="label">SCENARIO SIMULATOR</div>
+<div class="kv"><span>Stock move</span><span id="scMoveLabel">0%</span></div><input class="range" id="scMove" type="range" min="-20" max="20" value="0" step="1" oninput="scenario()">
+<div class="kv"><span>Days forward</span><span id="scDaysLabel">0</span></div><input class="range" id="scDays" type="range" min="0" max="30" value="0" step="1" oninput="scenario()">
+<div class="kv"><span>IV change</span><span id="scIvLabel">0 pts</span></div><input class="range" id="scIv" type="range" min="-30" max="30" value="0" step="1" oninput="scenario()">
+<div class="value" id="scenarioValue" style="font-size:22px">—</div><div class="sub" id="scenarioText">Black-Scholes estimate using current chain IV. Not a guaranteed future quote.</div>
+</div></div>
+</section>
+</section>
+
+<section id="simView" class="view">
+<section class="grid">
+<div class="card"><div class="label">STARTING PAPER CASH</div><div class="value">$10,000</div></div>
+<div class="card"><div class="label">PAPER EQUITY</div><div class="value" id="paperEquity">—</div></div>
+<div class="card"><div class="label">UNREALIZED P/L</div><div class="value" id="paperUnreal">—</div></div>
+<div class="card"><div class="label">REALIZED P/L</div><div class="value" id="paperReal">—</div></div>
+</section>
+<section class="box table"><div class="controls"><div><div class="label">OPEN PAPER POSITIONS</div><div class="sub">Entry uses ask when available; exit/mark uses bid when available. This intentionally includes the quoted spread.</div></div><button class="btn" onclick="resetPaper()">Reset simulator</button></div>
+<table><thead><tr><th>Ticker</th><th>Contract</th><th>Opened</th><th>Entry</th><th>Current exit mark</th><th>P/L</th><th>Underlying</th><th></th></tr></thead><tbody id="paperOpen"></tbody></table></section>
+<section class="box table"><div class="label">CLOSED PAPER POSITIONS</div>
+<table><thead><tr><th>Ticker</th><th>Contract</th><th>Entry</th><th>Exit</th><th>P/L</th><th>Opened</th><th>Closed</th></tr></thead><tbody id="paperClosed"></tbody></table></section>
+<section class="box" style="margin-top:12px"><div class="label">HISTORICAL REPLAY · UNDERLYING ONLY</div><div class="sub">Use this to inspect what happened after an earlier date without pretending we have historical option quotes. Exact option replay requires historical chain data from a dedicated provider.</div>
+<div class="controls" style="margin-top:10px"><select class="select" id="replayDate" onchange="replay()"></select><select class="select" id="replayH" onchange="replay()"><option value="5">5 days</option><option value="10">10 days</option><option value="20">20 days</option><option value="30">30 days</option></select></div>
+<div class="value" id="replayResult" style="font-size:20px">—</div><div class="sub" id="replayText">—</div></section>
+</section>
+
+<div class="foot">Research and education only. MarketLens separates model evidence from the decision you make. Options can lose 100% of premium. Quotes may be delayed. Greeks and scenario values are model estimates; verify live quotes and contract details with your brokerage before acting.</div>
 </main>
+
 <script>
-let P,C,ch;
+let P,C,ch,selectedContract;
 const pc=x=>x==null?'—':(Number(x)*100).toFixed(1)+'%';
-const money=x=>x==null?'—':'$'+Number(x).toLocaleString(undefined,{maximumFractionDigits:2});
-async function runResearch(){
+const money=x=>x==null?'—':'$'+Number(x).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+const num=(x,d=2)=>x==null?'—':Number(x).toFixed(d);
+const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+
+function showView(v,b){
+  document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.navtabs .tab').forEach(x=>x.classList.remove('active'));
+  document.getElementById(v+'View').classList.add('active'); b.classList.add('active');
+  if(v==='sim')renderPaper();
+}
+async function runResearch(ticker=null){
   const b=document.getElementById('runBtn'),s=document.getElementById('runStatus');
   b.disabled=true;s.textContent='Starting…';
+  const t=ticker || (C&&C.ticker) || '';
   try{
-    const r=await fetch('/api/run-research',{method:'POST'}),j=await r.json();
-    s.textContent=r.ok?'Queued ✓':(j.error||'Failed');
-    if(r.ok)setTimeout(()=>s.textContent='Running in GitHub Actions…',1800);
+    const r=await fetch('/api/run-research',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticker:t})});
+    const j=await r.json(); s.textContent=r.ok?('Queued '+(t||'core')+' ✓'):(j.error||'Failed');
+    if(r.ok)setTimeout(()=>s.textContent='Research running…',1700);
   }catch(e){s.textContent='Failed'}
-  finally{setTimeout(()=>b.disabled=false,5000)}
+  finally{setTimeout(()=>b.disabled=false,3500)}
+}
+function analyzeTicker(){
+  const t=tickerInput.value.trim().toUpperCase();
+  if(!/^[A-Z][A-Z0-9.\-]{0,7}$/.test(t)){runStatus.textContent='Enter a valid ticker';return}
+  const existing=P&&P.tickers&&P.tickers.find(x=>x.ticker===t);
+  if(existing){const btn=[...tabs.children].find(x=>x.textContent===t);sel(t,btn);runStatus.textContent=t+' loaded';return}
+  runResearch(t);
 }
 async function load(){
   const r=await fetch('/api/data',{cache:'no-store'});P=await r.json();
-  updated.textContent='Updated '+new Date(P.generated_at).toLocaleString();
-  tabs.innerHTML='';
+  updated.textContent='Updated '+new Date(P.generated_at).toLocaleString();tabs.innerHTML='';
   (P.tickers||[]).forEach((x,i)=>{const b=document.createElement('button');b.className='tab'+(i?'':' active');b.textContent=x.ticker;b.onclick=()=>sel(x.ticker,b);tabs.appendChild(b)});
   if(P.tickers&&P.tickers.length)sel(P.tickers[0].ticker,tabs.children[0]); else updated.textContent='Waiting for research data';
 }
 function sel(t,b){
-  C=P.tickers.find(x=>x.ticker===t);document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');
+  C=P.tickers.find(x=>x.ticker===t);selectedContract=null;contractPanel.classList.remove('active');
+  document.querySelectorAll('.tickerTabs .tab').forEach(x=>x.classList.remove('active'));if(b)b.classList.add('active');
+  tickerInput.value=t;renderResearch();renderOptions();renderPaper();renderReplay();
+}
+function renderResearch(){
   price.textContent=money(C.price);returns.textContent='1D '+pc(C.change_1d)+' · 5D '+pc(C.change_5d);prob.textContent=pc(C.probability_5d_up);
-  regime.textContent=C.regime||'—';vol.textContent=pc(C.volatility_20d);rsi.textContent='RSI 14: '+(C.rsi_14==null?'—':Number(C.rsi_14).toFixed(1));dd.textContent=pc(C.drawdown_252);
-  const e=C.evidence||{};estate.textContent=e.state||'Awaiting refreshed research';evidenceNote.textContent=(e.validation_quality||'Validation pending')+' · mean AUC '+(e.mean_roc_auc==null?'—':Number(e.mean_roc_auc).toFixed(3));
-  base.textContent=pc(C.base_up_rate);const s=C.similar_setups||{};simrate.textContent=pc(s.actual_up_rate);simn.textContent=(s.observations||0)+' comparable observations';simret.textContent=pc(s.mean_forward_return);lift.textContent=(s.actual_up_rate==null||C.base_up_rate==null)?'—':((s.actual_up_rate-C.base_up_rate)*100).toFixed(1)+' pp';
-  const o=C.options||{};optstatus.textContent=o.status||'Awaiting options data';
-  optionsRows.innerHTML=Object.entries(o.horizons||{}).map(([h,x])=>'<tr><td>'+h+' days</td><td>'+pc(x.positive_rate)+'</td><td>'+pc(x.median_return)+'</td><td>'+pc(x.p10)+'</td><td>'+pc(x.p90)+'</td><td>'+pc(x.realized_move_1sd)+'</td></tr>').join('');
-  const oc=o.chain||{};chainNote.textContent=oc.quote_note||oc.error||'Awaiting option-chain refresh';
-  chainRows.innerHTML=(oc.contracts||[]).slice(0,40).map(x=>'<tr><td>'+x.type+'</td><td>'+x.expiration+'</td><td>'+x.dte+'</td><td>'+money(x.strike)+'</td><td>'+money(x.mid)+'</td><td>'+pc(x.iv)+'</td><td>'+money(x.breakeven)+'</td><td>'+pc(x.breakeven_move)+'</td><td>'+x.open_interest+'</td><td>'+x.volume+'</td><td>'+pc(x.spread_pct)+'</td><td>'+(x.iv_rv_ratio==null?'—':Number(x.iv_rv_ratio).toFixed(2)+'×')+'</td><td>'+pc(x.historical_vol_prob_breakeven)+'</td><td>'+money(x.max_loss_per_contract)+'</td><td>'+(x.research_flags||[]).join(', ')+'</td></tr>').join('');
-  models.innerHTML=Object.entries(C.model_probabilities||{}).map(([k,v])=>'<div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #1c2635"><span>'+k.replace('_',' ')+'</span><b>'+pc(v)+'</b></div>').join('');
-  metrics.innerHTML=(C.metrics||[]).map(m=>'<tr><td>'+m.model.replace('_',' ')+'</td><td>'+pc(m.accuracy)+'</td><td>'+pc(m.f1)+'</td><td>'+(m.roc_auc==null?'—':Number(m.roc_auc).toFixed(3))+'</td><td>'+(m.brier==null?'—':Number(m.brier).toFixed(3))+'</td><td>'+m.observations+'</td></tr>').join('');
+  regime.textContent=C.regime||'—';vol.textContent=pc(C.volatility_20d);rsi.textContent='RSI 14: '+(C.rsi_14==null?'—':num(C.rsi_14,1));dd.textContent=pc(C.drawdown_252);
+  const rs=C.relative_strength||{}; relative.textContent=C.ticker==='SPY'?'Benchmark ticker':'20D vs SPY '+(rs.vs_spy_20d==null?'—':((rs.vs_spy_20d>=0?'+':'')+(rs.vs_spy_20d*100).toFixed(1)+' pp'));
+  models.innerHTML=Object.entries(C.model_probabilities||{}).map(([k,v])=>'<div class="kv"><span>'+esc(k.replaceAll('_',' '))+'</span><b>'+pc(v)+'</b></div>').join('');
+  const e=C.evidence||{},s=C.similar_setups||{};estate.textContent=e.state||'Awaiting evidence';evidenceNote.textContent=(e.validation_quality||'Validation pending')+' · mean AUC '+(e.mean_roc_auc==null?'—':num(e.mean_roc_auc,3));
+  evidenceMore.innerHTML='<div class="kv"><span>Model agreement</span><b>'+pc(e.model_agreement)+'</b></div><div class="kv"><span>Comparable sample</span><b>'+(e.similar_sample_size||0)+'</b></div>';
+  base.textContent=pc(C.base_up_rate);simrate.textContent=pc(s.actual_up_rate);simn.textContent=(s.observations||0)+' comparable observations';simret.textContent=pc(s.mean_forward_return);lift.textContent=(s.actual_up_rate==null||C.base_up_rate==null)?'—':((s.actual_up_rate-C.base_up_rate)*100).toFixed(1)+' pp';
+  plain.innerHTML=(C.plain_language||['Awaiting refreshed research.']).map(x=>'<li>'+esc(x)+'</li>').join('');
+  const ctx=C.company_context||{},er=ctx.earnings||{};earnings.textContent=er.days_to_earnings==null?'No upcoming date available':(er.days_to_earnings+' days to earnings');catalysts.textContent=(ctx.catalyst_flags||[]).length?'Headline themes: '+ctx.catalyst_flags.join(', '):(ctx.news_note||'No catalyst themes detected in the current headline set.');
+  news.innerHTML=(ctx.news||[]).slice(0,5).map(n=>'<div class="newsitem">'+(n.url?'<a target="_blank" rel="noopener" href="'+esc(n.url)+'">'+esc(n.title)+'</a>':'<span>'+esc(n.title)+'</span>')+'<div class="sub">'+esc(n.publisher||'')+(n.published_at?' · '+esc(String(n.published_at).slice(0,10)):'')+'</div></div>').join('')||'<div class="empty">No recent headlines in this research snapshot.</div>';
+  metrics.innerHTML=(C.metrics||[]).map(m=>'<tr><td>'+esc(m.model.replaceAll('_',' '))+'</td><td>'+pc(m.accuracy)+'</td><td>'+pc(m.f1)+'</td><td>'+num(m.roc_auc,3)+'</td><td>'+num(m.brier,3)+'</td><td>'+m.observations+'</td></tr>').join('');
   draw();
 }
-function draw(){
-  if(ch)ch.destroy();
-  ch=new Chart(chart,{type:'line',data:{labels:(C.history||[]).map(x=>x.date),datasets:[{label:C.ticker+' close',data:(C.history||[]).map(x=>x.close),borderWidth:2,pointRadius:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#8190a5'}}},scales:{x:{ticks:{color:'#657489',maxTicksLimit:8},grid:{display:false}},y:{ticks:{color:'#657489'},grid:{color:'#151d29'}}}}});
+function renderOptions(){
+  const o=C.options||{},sum=o.summary||{},ctx=C.company_context||{},er=ctx.earnings||{};
+  optRV.textContent=pc(o.realized_vol_20d);atmMove.textContent=pc(sum.atm_straddle_implied_move);atmExp.textContent=sum.atm_expiration?('Nearest reference expiration '+sum.atm_expiration):'Awaiting chain';optEarnings.textContent=er.days_to_earnings==null?'—':er.days_to_earnings+' days';
+  optstatus.textContent=o.status||'Awaiting options data';
+  optionsRows.innerHTML=Object.entries(o.horizons||{}).map(([h,x])=>'<tr><td>'+h+' days</td><td>'+pc(x.positive_rate)+'</td><td>'+pc(x.median_return)+'</td><td>'+pc(x.p10)+'</td><td>'+pc(x.p25)+'</td><td>'+pc(x.p75)+'</td><td>'+pc(x.p90)+'</td><td>'+pc(x.realized_move_1sd)+'</td></tr>').join('');
+  const oc=o.chain||{};chainNote.textContent=oc.quote_note||oc.error||'Awaiting option-chain refresh';
+  expFilter.innerHTML='<option value="all">All expirations</option>'+(oc.expirations||[]).map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('');
+  renderChain();
 }
+function renderChain(){
+  const oc=(C.options||{}).chain||{},typ=typeFilter.value,exp=expFilter.value;
+  let rows=(oc.contracts||[]).filter(x=>(typ==='all'||x.type===typ)&&(exp==='all'||x.expiration===exp));
+  chainRows.innerHTML=rows.slice(0,120).map((x,i)=>'<tr><td><button class="btn" onclick="selectContract(\''+esc(x.contract_symbol||'')+'\','+JSON.stringify(x.strike)+',\''+x.type+'\',\''+x.expiration+'\')">Analyze</button></td><td>'+x.type+'</td><td>'+x.expiration+'</td><td>'+x.dte+'</td><td>'+money(x.strike)+'</td><td>'+money(x.bid)+'</td><td>'+money(x.ask)+'</td><td>'+money(x.mid)+'</td><td>'+pc(x.iv)+'</td><td>'+num(x.delta,3)+'</td><td>'+num(x.gamma,4)+'</td><td>'+money(x.theta_per_contract_per_day)+'</td><td>'+money(x.vega_per_contract_per_vol_point)+'</td><td>'+money(x.breakeven)+'</td><td>'+pc(x.breakeven_move)+'</td><td>'+x.open_interest+'</td><td>'+x.volume+'</td><td>'+pc(x.spread_pct)+'</td></tr>').join('');
+}
+function selectContract(sym,strike,type,exp){
+  const rows=(((C.options||{}).chain||{}).contracts||[]);
+  selectedContract=rows.find(x=>(sym&&x.contract_symbol===sym)||(!sym&&x.strike===strike&&x.type===type&&x.expiration===exp));
+  if(!selectedContract)return;contractPanel.classList.add('active');
+  const x=selectedContract;contractTitle.textContent=C.ticker+' '+x.expiration+' '+money(x.strike)+' '+x.type.toUpperCase();
+  contractStats.innerHTML=[
+    ['Premium mid',money(x.mid)],['Breakeven',money(x.breakeven)],['IV',pc(x.iv)],['Delta',num(x.delta,3)],['Theta/day',money(x.theta_per_contract_per_day)],
+    ['Vega/1pt',money(x.vega_per_contract_per_vol_point)],['Spread',pc(x.spread_pct)],['Open interest',x.open_interest],['Max debit',money(x.max_loss_per_contract)],['BE benchmark',pc(x.historical_vol_prob_breakeven)]
+  ].map(([a,b])=>'<div class="stat"><div class="label">'+a+'</div><div style="margin-top:7px;font-weight:700">'+b+'</div></div>').join('');
+  contractExplain.innerHTML=contractExplanation(x).map(v=>'<li>'+esc(v)+'</li>').join('');
+  scMove.value=0;scDays.value=0;scIv.value=0;scenario();
+  contractPanel.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function contractExplanation(x){
+  const out=[],delta=(x.delta||0)*100,theta=x.theta_per_contract_per_day,vega=x.vega_per_contract_per_vol_point;
+  out.push('At the current model estimate, a $1 move in '+C.ticker+' changes this contract by roughly $'+Math.abs(delta).toFixed(0)+' initially from delta, all else equal. Direction depends on whether it is a call or put.');
+  if(theta!=null)out.push('Time decay is currently about $'+Math.abs(theta).toFixed(2)+' per contract per day, holding price and volatility constant. Theta generally changes as expiration approaches.');
+  if(vega!=null)out.push('A 1 percentage-point change in implied volatility changes the modeled contract value by about $'+Math.abs(vega).toFixed(2)+' per contract initially.');
+  if(x.breakeven_move!=null)out.push('At expiration, the underlying must move to about '+money(x.breakeven)+' for this long option to break even, roughly '+pc(Math.abs(x.breakeven_move))+' from the current stock price.');
+  if(x.iv_rv_ratio!=null)out.push('Current implied volatility is about '+Number(x.iv_rv_ratio).toFixed(2)+'× the recent realized-volatility estimate. This is a pricing comparison, not proof that the option is cheap or expensive.');
+  const er=((C.company_context||{}).earnings||{}).days_to_earnings;if(er!=null&&er<=x.dte)out.push('This contract spans the next scheduled earnings date, so event risk and a post-event IV change can materially affect the option.');
+  if(x.spread_pct!=null&&x.spread_pct>.15)out.push('The quoted bid/ask spread is wide relative to premium, which can make entry and exit materially more expensive.');
+  return out;
+}
+function normcdf(x){const a1=.254829592,a2=-.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p=.3275911;const s=x<0?-1:1;const z=Math.abs(x)/Math.sqrt(2);const t=1/(1+p*z);const erf=1-(((((a5*t+a4)*t)+a3)*t+a2)*t+a1)*t*Math.exp(-z*z);return .5*(1+s*erf)}
+function bs(side,S,K,T,sigma,r){
+ if(T<=0)return Math.max(side==='call'?S-K:K-S,0);sigma=Math.max(sigma,.0001);const d1=(Math.log(S/K)+(r+.5*sigma*sigma)*T)/(sigma*Math.sqrt(T)),d2=d1-sigma*Math.sqrt(T);return side==='call'?S*normcdf(d1)-K*Math.exp(-r*T)*normcdf(d2):K*Math.exp(-r*T)*normcdf(-d2)-S*normcdf(-d1)
+}
+function scenario(){
+ if(!selectedContract)return;const x=selectedContract,m=Number(scMove.value),d=Number(scDays.value),ivc=Number(scIv.value);scMoveLabel.textContent=(m>=0?'+':'')+m+'%';scDaysLabel.textContent=d;scIvLabel.textContent=(ivc>=0?'+':'')+ivc+' pts';
+ const S=C.price*(1+m/100),days=Math.max(x.dte-d,0),iv=Math.max((x.iv||.01)+ivc/100,.001),r=((((C.options||{}).chain||{}).risk_free_rate)||.04),v=bs(x.type,S,x.strike,days/365,iv,r),entry=x.ask>0?x.ask:x.mid,pnl=(v-entry)*100;
+ scenarioValue.textContent='Estimated value '+money(v)+' · P/L '+(pnl>=0?'+':'')+money(pnl);
+ scenarioValue.className='value '+(pnl>=0?'good':'bad');scenarioText.textContent='Underlying '+money(S)+' · '+days+' DTE · IV '+pc(iv)+'. Black-Scholes scenario estimate; not a guaranteed quote.';
+}
+function paperState(){try{return JSON.parse(localStorage.getItem('marketlens_paper_v1'))||{open:[],closed:[]}}catch(e){return{open:[],closed:[]}}}
+function savePaper(s){localStorage.setItem('marketlens_paper_v1',JSON.stringify(s))}
+function paperTrade(){
+ if(!selectedContract)return;const x=selectedContract,s=paperState(),entry=(x.ask&&x.ask>0)?x.ask:x.mid;if(!entry){runStatus.textContent='No usable entry quote';return}
+ s.open.push({id:Date.now(),ticker:C.ticker,type:x.type,strike:x.strike,expiration:x.expiration,contract_symbol:x.contract_symbol||'',qty:1,entry_price:entry,entry_spot:C.price,entry_iv:x.iv,opened_at:new Date().toISOString()});savePaper(s);runStatus.textContent='Paper trade added';renderPaper();
+}
+function lookupMark(p){
+ const t=(P.tickers||[]).find(x=>x.ticker===p.ticker);if(!t)return{mark:null,spot:null};
+ const rows=((((t.options||{}).chain||{}).contracts)||[]);const x=rows.find(z=>(p.contract_symbol&&z.contract_symbol===p.contract_symbol)||(!p.contract_symbol&&z.type===p.type&&z.strike===p.strike&&z.expiration===p.expiration));
+ if(x)return{mark:(x.bid&&x.bid>0)?x.bid:x.mid,spot:t.price};
+ const expired=new Date(p.expiration+'T23:59:59Z')<new Date();if(expired&&t.price!=null){const intrinsic=Math.max(p.type==='call'?t.price-p.strike:p.strike-t.price,0);return{mark:intrinsic,spot:t.price}}
+ return{mark:null,spot:t.price};
+}
+function renderPaper(){
+ const s=paperState();let unreal=0,real=0,cash=10000;paperOpen.innerHTML='';paperClosed.innerHTML='';
+ s.open.forEach(p=>{const q=lookupMark(p),cost=p.entry_price*100*p.qty;cash-=cost;const val=q.mark==null?null:q.mark*100*p.qty,pl=val==null?null:val-cost;if(pl!=null)unreal+=pl;paperOpen.innerHTML+='<tr><td>'+p.ticker+'</td><td>'+p.expiration+' '+money(p.strike)+' '+p.type+'</td><td>'+new Date(p.opened_at).toLocaleDateString()+'</td><td>'+money(p.entry_price)+'</td><td>'+money(q.mark)+'</td><td class="'+(pl==null?'':pl>=0?'good':'bad')+'">'+(pl==null?'—':((pl>=0?'+':'')+money(pl)))+'</td><td>'+money(q.spot)+'</td><td><button class="btn" onclick="closePaper('+p.id+')">Close</button></td></tr>'});
+ s.closed.forEach(p=>{real+=p.pnl;cash+=p.exit_price*100*p.qty;paperClosed.innerHTML+='<tr><td>'+p.ticker+'</td><td>'+p.expiration+' '+money(p.strike)+' '+p.type+'</td><td>'+money(p.entry_price)+'</td><td>'+money(p.exit_price)+'</td><td class="'+(p.pnl>=0?'good':'bad')+'">'+(p.pnl>=0?'+':'')+money(p.pnl)+'</td><td>'+new Date(p.opened_at).toLocaleDateString()+'</td><td>'+new Date(p.closed_at).toLocaleDateString()+'</td></tr>'});
+ const openVal=s.open.reduce((a,p)=>{const q=lookupMark(p);return a+(q.mark==null?0:q.mark*100*p.qty)},0),equity=cash+openVal;
+ paperEquity.textContent=money(equity);paperUnreal.textContent=(unreal>=0?'+':'')+money(unreal);paperReal.textContent=(real>=0?'+':'')+money(real);paperUnreal.className='value '+(unreal>=0?'good':'bad');paperReal.className='value '+(real>=0?'good':'bad');
+ if(!s.open.length)paperOpen.innerHTML='<tr><td colspan="8" class="empty">No open paper positions. Analyze a contract and choose Paper trade.</td></tr>';
+ if(!s.closed.length)paperClosed.innerHTML='<tr><td colspan="7" class="empty">No closed paper positions yet.</td></tr>';
+}
+function closePaper(id){
+ const s=paperState(),i=s.open.findIndex(x=>x.id===id);if(i<0)return;const p=s.open[i],q=lookupMark(p);if(q.mark==null){runStatus.textContent='No current exit quote';return}
+ p.exit_price=q.mark;p.closed_at=new Date().toISOString();p.pnl=(p.exit_price-p.entry_price)*100*p.qty;s.open.splice(i,1);s.closed.push(p);savePaper(s);renderPaper();
+}
+function resetPaper(){if(confirm('Reset all paper-trading history in this browser?')){localStorage.removeItem('marketlens_paper_v1');renderPaper()}}
+function renderReplay(){
+ const h=C.history||[];replayDate.innerHTML=h.slice(0,-30).reverse().map(x=>'<option value="'+x.date+'">'+x.date+'</option>').join('');replay();
+}
+function replay(){
+ if(!C||!replayDate.value)return;const h=C.history||[],i=h.findIndex(x=>x.date===replayDate.value),n=Number(replayH.value);if(i<0||i+n>=h.length){replayResult.textContent='Not enough subsequent data';replayText.textContent='Choose an earlier date.';return}
+ const a=h[i].close,b=h[i+n].close,r=b/a-1;replayResult.textContent=C.ticker+' '+(r>=0?'+':'')+pc(r)+' over '+n+' trading days';replayResult.className='value '+(r>=0?'good':'bad');replayText.textContent='Underlying moved from '+money(a)+' to '+money(b)+'. This does not reconstruct historical option prices.';
+}
+function draw(){if(ch)ch.destroy();ch=new Chart(chart,{type:'line',data:{labels:(C.history||[]).map(x=>x.date),datasets:[{label:C.ticker+' close',data:(C.history||[]).map(x=>x.close),borderWidth:2,pointRadius:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#8190a5'}}},scales:{x:{ticks:{color:'#657489',maxTicksLimit:8},grid:{display:false}},y:{ticks:{color:'#657489'},grid:{color:'#151d29'}}}}})}
 load();
-</script></body></html>"""
+</script>
+</body></html>"""
 
 def read_data():
     if DATA.exists():
@@ -123,13 +298,23 @@ def run_research():
     token=os.getenv("GITHUB_ACTIONS_TOKEN")
     if not token:
         return jsonify({"ok":False,"error":"Server trigger is not configured"}),503
+    body=request.get_json(silent=True) or {}
+    ticker=str(body.get("ticker") or "").upper().strip()
+    if ticker and not re.fullmatch(r"[A-Z][A-Z0-9.\-]{0,7}",ticker):
+        return jsonify({"ok":False,"error":"Invalid ticker"}),400
+    payload={"ref":"main"}
+    if ticker:
+        payload["inputs"]={"ticker":ticker}
     url="https://api.github.com/repos/Wickey23/MarketLens-ML/actions/workflows/daily-research.yml/dispatches"
-    req=urllib.request.Request(url,data=json.dumps({"ref":"main"}).encode(),method="POST",headers={
-        "Authorization":f"Bearer {token}","Accept":"application/vnd.github+json",
-        "X-GitHub-Api-Version":"2022-11-28","User-Agent":"MarketLens-ML"})
+    req=urllib.request.Request(url,data=json.dumps(payload).encode(),method="POST",headers={
+        "Authorization":f"Bearer {token}",
+        "Accept":"application/vnd.github+json",
+        "X-GitHub-Api-Version":"2022-11-28",
+        "User-Agent":"MarketLens-ML",
+    })
     try:
         with urllib.request.urlopen(req,timeout=10):
-            return jsonify({"ok":True,"status":"queued"})
+            return jsonify({"ok":True,"status":"queued","ticker":ticker or None})
     except urllib.error.HTTPError as e:
         return jsonify({"ok":False,"error":f"GitHub trigger failed ({e.code})"}),502
     except Exception:
