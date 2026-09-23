@@ -97,7 +97,7 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
         state["cash"]-=cost
         pos={"id":f"{now}:{key}","ticker":ticker,"contract_key":key,"type":q["type"],
              "strike":q["strike"],"expiration":q["expiration"],"qty":qty,
-             "entry_price":entry,"entry_cost":cost,"opened_at":now,"entry_score":score,
+             "entry_price":entry,"entry_cost":cost,"opened_at":now,"entry_score":score,\n             "entry_dte":q.get("dte"),"entry_iv":q.get("iv"),"entry_iv_rv_ratio":q.get("iv_rv_ratio"),\n             "entry_spread_pct":q.get("spread_pct"),"entry_theta_cost_pct_per_day":q.get("theta_cost_pct_per_day"),\n             "entry_regime":t.get("regime"),"entry_model_auc":(t.get("evidence") or {}).get("mean_roc_auc"),
              "entry_prob_profit":r.get("prob_profit"),"entry_expected_pnl":r.get("expected_pnl_per_contract"),
              "entry_scope":r.get("historical_scope"),"entry_reasons":r.get("reasons") or [],
              "entry_risks":r.get("risks") or [],"entry_research_generated_at":snapshot.get("generated_at")}
@@ -128,3 +128,49 @@ def performance_summary(state):
             "avg_win":sum(p["pnl"] for p in wins)/len(wins) if wins else None,
             "avg_loss":sum(p["pnl"] for p in losses)/len(losses) if losses else None,
             "max_drawdown":max_dd,"open_positions":len(state.get("open") or [])}
+
+
+def _group_stats(closed,key_fn):
+    groups=defaultdict(list)
+    for p in closed:
+        groups[str(key_fn(p))].append(p)
+    out=[]
+    for name,rows in groups.items():
+        pnl=[float(x.get("pnl") or 0) for x in rows]
+        wins=sum(x>0 for x in pnl)
+        cost=sum(float(x.get("entry_cost") or 0) for x in rows)
+        out.append({"group":name,"trades":len(rows),"win_rate":wins/len(rows) if rows else None,
+                    "total_pnl":sum(pnl),"avg_pnl":sum(pnl)/len(pnl) if pnl else None,
+                    "return_on_premium":sum(pnl)/cost if cost else None})
+    return sorted(out,key=lambda x:(x["trades"],x["total_pnl"]),reverse=True)
+
+def performance_attribution(state):
+    """Describe where forward paper results came from; never backfills entry facts."""
+    closed=state.get("closed") or []
+    def score_band(p):
+        s=float(p.get("entry_score") or 0)
+        return "80+" if s>=80 else ("75-79" if s>=75 else ("72-74" if s>=72 else "<72"))
+    def dte_band(p):
+        d=p.get("entry_dte")
+        if d is None: return "unknown"
+        d=int(d)
+        return "0-7" if d<=7 else ("8-21" if d<=21 else ("22-45" if d<=45 else "46+"))
+    def prob_band(p):
+        q=p.get("entry_prob_profit")
+        if q is None: return "unknown"
+        q=float(q)
+        return "65%+" if q>=.65 else ("60-65%" if q>=.60 else "<60%")
+    def iv_band(p):
+        x=p.get("entry_iv_rv_ratio")
+        if x is None:return "unknown"
+        x=float(x)
+        return "IV<0.9xRV" if x<.9 else ("0.9-1.2x" if x<=1.2 else "IV>1.2xRV")
+    return {
+        "by_type":_group_stats(closed,lambda p:p.get("type","unknown")),
+        "by_regime":_group_stats(closed,lambda p:p.get("entry_regime","unknown")),
+        "by_dte":_group_stats(closed,dte_band),
+        "by_score":_group_stats(closed,score_band),
+        "by_historical_probability":_group_stats(closed,prob_band),
+        "by_iv_environment":_group_stats(closed,iv_band),
+        "note":"Attribution uses facts captured at entry. Small samples should not be treated as evidence of a durable edge.",
+    }
