@@ -62,7 +62,7 @@ body{background:radial-gradient(circle at 50% -20%,#10203a 0,transparent 38%),va
 
 <section id="researchView" class="view active"><div class="workspaceHead"><div><h2>Research overview</h2><p class="sub">Understand the underlying before choosing a contract.</p></div><span class="statusPill"><span class="dot"></span>Research data</span></div><div class="hint"><b>Start here.</b> A high model percentage is not enough by itself. Check Decision Evidence and the out-of-sample metrics before interpreting the signal.</div>
 <section class="grid">
-<div class="card"><div class="label">LATEST PRICE</div><div class="value" id="price">—</div><div class="sub" id="returns">—</div></div>
+<div class="card"><div class="label">LATEST UNDERLYING PRICE</div><div class="value" id="price">—</div><div class="sub" id="returns">—</div><div class="sub" id="liveQuoteStatus">Scheduled snapshot</div></div>
 <div class="card"><div class="label">5-DAY UP MODEL OUTPUT</div><div class="value" id="prob">—</div><div class="sub">Model output, not a guaranteed probability</div></div>
 <div class="card"><div class="label">MARKET REGIME</div><div class="value" id="regime" style="font-size:18px">—</div><div class="sub" id="relative">—</div></div>
 <div class="card"><div class="label">20-DAY VOLATILITY</div><div class="value" id="vol">—</div><div class="sub" id="rsi">—</div></div>
@@ -150,6 +150,29 @@ body{background:radial-gradient(circle at 50% -20%,#10203a 0,transparent 38%),va
 </main>
 
 <script>
+let liveQuoteTimer=null;
+async function refreshLiveQuote(){
+  if(!C||!C.ticker)return;
+  const requested=C.ticker;
+  const status=document.getElementById('liveQuoteStatus');
+  try{
+    const r=await fetch('/api/live-quote?ticker='+encodeURIComponent(requested),{cache:'no-store'});
+    const q=await r.json();
+    if(!r.ok||!q.ok||!C||C.ticker!==requested)return;
+    if(q.price!=null)price.textContent=money(q.price);
+    if(q.change_pct!=null)returns.textContent='Today '+pc(q.change_pct)+' · research 5D '+pc(C.change_5d);
+    const stamp=q.market_timestamp?new Date(q.market_timestamp).toLocaleTimeString([], {hour:'numeric',minute:'2-digit',second:'2-digit'}):'time unavailable';
+    if(status)status.textContent=(q.delayed?'Near-live quote':'Live quote')+' · '+stamp+' · '+(q.provider||'market provider');
+  }catch(e){
+    if(status)status.textContent='Live quote unavailable · showing research snapshot';
+  }
+}
+function startLiveQuotePolling(){
+  if(liveQuoteTimer)clearInterval(liveQuoteTimer);
+  refreshLiveQuote();
+  liveQuoteTimer=setInterval(refreshLiveQuote,15000);
+}
+
 let P,C,ch,selectedContract,aiCh,pendingReview=null;
 const pc=x=>x==null?'—':(Number(x)*100).toFixed(1)+'%';
 const money=x=>x==null?'—':'$'+Number(x).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -212,7 +235,7 @@ async function load(){
 function sel(t,b){
   C=P.tickers.find(x=>x.ticker===t);selectedContract=null;contractPanel.classList.remove('active');
   document.querySelectorAll('.tickerTabs .tab').forEach(x=>x.classList.remove('active'));if(b)b.classList.add('active');
-  tickerInput.value=t;renderResearch();renderOptions();renderPaper();renderReplay();renderAI();
+  tickerInput.value=t;renderResearch();renderOptions();renderPaper();renderReplay();renderAI();startLiveQuotePolling();
 }
 function renderResearch(){
   price.textContent=money(C.price);returns.textContent='1D '+pc(C.change_1d)+' · 5D '+pc(C.change_5d);prob.textContent=pc(C.probability_5d_up);
