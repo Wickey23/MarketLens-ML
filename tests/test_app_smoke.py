@@ -36,3 +36,24 @@ def test_research_trigger_requires_server_token(monkeypatch):
     client=market_app.app.test_client()
     r=client.post('/api/run-research',json={'ticker':'SPY'})
     assert r.status_code==503
+
+
+def test_live_quote_route(monkeypatch):
+    monkeypatch.setattr(market_app,'live_quote',lambda ticker:{
+        'ticker':ticker,'price':123.45,'change_pct':0.01,'provider':'test',
+        'realtime':False,'delayed':True,'market_timestamp':'2026-01-01T15:30:00+00:00'
+    })
+    client=market_app.app.test_client()
+    r=client.get('/api/live-quote?ticker=SPY')
+    assert r.status_code==200
+    j=r.get_json()
+    assert j['ok'] is True
+    assert j['ticker']=='SPY'
+    assert j['price']==123.45
+    assert r.headers['Cache-Control'].startswith('no-store')
+
+
+def test_live_quote_rejects_invalid_ticker():
+    client=market_app.app.test_client()
+    r=client.get('/api/live-quote?ticker=$BAD')
+    assert r.status_code==400
