@@ -81,7 +81,11 @@ def enrich_contract(r, spot, annual_rv, risk_free):
         r["historical_vol_prob_breakeven"]=None
     r["realized_move_to_expiry"]=_f(move)
     r["iv_rv_ratio"]=_f(r["iv"]/sigma) if r["iv"] is not None and sigma>0 else None
-    r["max_loss_per_contract"]=_f((r["mid"] or 0)*100)
+    entry=(r.get("ask") if r.get("ask") and r.get("ask")>0 else r.get("mid")) or 0
+    r["entry_debit_per_contract"]=_f(entry*100)
+    r["max_loss_per_contract"]=_f(entry*100)
+    r["max_profit_per_contract"]=None if r["type"]=="call" else _f(max(r["strike"]-entry,0)*100)
+    r["return_if_intrinsic_at_spot"]=_f(((max(spot-r["strike"],0) if r["type"]=="call" else max(r["strike"]-spot,0))-entry)/entry) if entry>0 else None
     intrinsic=max(spot-r["strike"],0) if r["type"]=="call" else max(r["strike"]-spot,0)
     r["intrinsic_value"]=_f(intrinsic)
     r["extrinsic_value"]=_f(max((r["mid"] or 0)-intrinsic,0))
@@ -95,6 +99,33 @@ def enrich_contract(r, spot, annual_rv, risk_free):
     if r["iv_rv_ratio"] is not None and r["iv_rv_ratio"]<=.90: flags.append("IV < realized")
     if abs(r.get("theta_per_contract_per_day") or 0) >= 25: flags.append("high theta")
     r["research_flags"]=flags
+
+    # Neutral contract-quality diagnostics. These describe execution/risk characteristics,
+    # not whether the user should buy or sell the contract.
+    checks=[]
+    spread=r.get("spread_pct")
+    if spread is None: checks.append({"name":"Spread","state":"unknown","detail":"No usable bid/ask spread"})
+    elif spread<=.10: checks.append({"name":"Spread","state":"strong","detail":"Relatively tight quoted spread"})
+    elif spread<=.20: checks.append({"name":"Spread","state":"mixed","detail":"Moderate quoted spread"})
+    else: checks.append({"name":"Spread","state":"weak","detail":"Wide quoted spread may materially affect execution"})
+    oi=r.get("open_interest",0); vol=r.get("volume",0)
+    if oi>=500 or vol>=100: checks.append({"name":"Liquidity","state":"strong","detail":"Higher open interest or trading activity"})
+    elif oi>=100 or vol>=20: checks.append({"name":"Liquidity","state":"mixed","detail":"Moderate open interest/activity"})
+    else: checks.append({"name":"Liquidity","state":"weak","detail":"Lower open interest/activity"})
+    theta=abs(r.get("theta_per_contract_per_day") or 0)
+    debit=r.get("entry_debit_per_contract") or 0
+    theta_ratio=(theta/debit) if debit>0 else None
+    r["theta_cost_pct_per_day"]=_f(theta_ratio)
+    if theta_ratio is None: checks.append({"name":"Time decay","state":"unknown","detail":"Theta unavailable"})
+    elif theta_ratio<=.01: checks.append({"name":"Time decay","state":"strong","detail":"Lower modeled daily decay relative to debit"})
+    elif theta_ratio<=.025: checks.append({"name":"Time decay","state":"mixed","detail":"Meaningful modeled daily decay"})
+    else: checks.append({"name":"Time decay","state":"weak","detail":"High modeled daily decay relative to debit"})
+    ratio=r.get("iv_rv_ratio")
+    if ratio is None: checks.append({"name":"Volatility pricing","state":"unknown","detail":"IV/realized comparison unavailable"})
+    elif ratio>=1.25: checks.append({"name":"Volatility pricing","state":"caution","detail":"IV materially exceeds recent realized volatility"})
+    elif ratio<=.90: checks.append({"name":"Volatility pricing","state":"notable","detail":"IV is below recent realized volatility"})
+    else: checks.append({"name":"Volatility pricing","state":"neutral","detail":"IV is near recent realized volatility"})
+    r["quality_checks"]=checks
     return r
 
 
