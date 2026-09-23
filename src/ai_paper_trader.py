@@ -101,7 +101,10 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
         state["cash"]-=cost
         pos={"id":f"{now}:{key}","ticker":ticker,"contract_key":key,"type":q["type"],
              "strike":q["strike"],"expiration":q["expiration"],"qty":qty,
-             "entry_price":entry,"entry_cost":cost,"opened_at":now,"entry_score":score,\n             "entry_dte":q.get("dte"),"entry_iv":q.get("iv"),"entry_iv_rv_ratio":q.get("iv_rv_ratio"),\n             "entry_spread_pct":q.get("spread_pct"),"entry_theta_cost_pct_per_day":q.get("theta_cost_pct_per_day"),\n             "entry_regime":t.get("regime"),"entry_model_auc":(t.get("evidence") or {}).get("mean_roc_auc"),
+             "entry_price":entry,"entry_cost":cost,"opened_at":now,"entry_score":score,
+             "entry_dte":q.get("dte"),"entry_iv":q.get("iv"),"entry_iv_rv_ratio":q.get("iv_rv_ratio"),
+             "entry_spread_pct":q.get("spread_pct"),"entry_theta_cost_pct_per_day":q.get("theta_cost_pct_per_day"),
+             "entry_regime":t.get("regime"),"entry_model_auc":(t.get("evidence") or {}).get("mean_roc_auc"),
              "entry_prob_profit":r.get("prob_profit"),"entry_expected_pnl":r.get("expected_pnl_per_contract"),
              "entry_scope":r.get("historical_scope"),"entry_reasons":r.get("reasons") or [],
              "entry_risks":r.get("risks") or [],"entry_research_generated_at":snapshot.get("generated_at")}
