@@ -7,7 +7,8 @@ import re
 import urllib.error
 import urllib.request
 
-app = Flask(__name__)\n# deployment marker removed
+app = Flask(__name__)
+# deployment marker removed
 DATA = Path(__file__).with_name("data") / "dashboard.json"
 
 HTML = r"""<!doctype html>
