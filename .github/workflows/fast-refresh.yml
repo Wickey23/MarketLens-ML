@@ -1,5 +1,12 @@
 name: fast-market-refresh
 on:
+  push:
+    branches: [main]
+    paths:
+      - "src/fast_refresh.py"
+      - "src/ai_paper_trader.py"
+      - "src/opportunity_radar.py"
+      - ".github/workflows/fast-refresh.yml"
   workflow_dispatch:
     inputs:
       ticker:
@@ -13,7 +20,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: fast-market-refresh
+  group: marketlens-data-writer
   cancel-in-progress: false
 
 jobs:
