@@ -169,7 +169,7 @@ def plain_language(ticker,evidence,ctx,options,rel):
     return notes
 
 
-def analyze(ticker):
+def analyze(ticker,learning=None):
     ticker=ticker.upper().strip()
     raw=download_prices(ticker,"2010-01-01")
     feat=build_features(raw)
@@ -301,7 +301,7 @@ def analyze(ticker):
     rel=relative_strength(raw,ticker)
     regime_series=classify_regime(raw)
     current_regime=str(regime_series.iloc[-1])
-    options["opportunity_radar"]=build_opportunity_radar(raw,(options.get("chain") or {}).get("contracts") or [],regime_series,current_regime,evidence,float(close.iloc[-1]))
+    options["opportunity_radar"]=build_opportunity_radar(raw,(options.get("chain") or {}).get("contracts") or [],regime_series,current_regime,evidence,float(close.iloc[-1]),learning=learning)
     explanation=plain_language(ticker,evidence,ctx,options,rel)
 
     return {
@@ -352,7 +352,7 @@ def main():
     by_ticker={x["ticker"]:x for x in p.get("tickers",[]) if x.get("ticker")}
     for t in tickers:
         try:
-            by_ticker[t]=analyze(t)
+            by_ticker[t]=analyze(t,current_learning)
         except Exception as e:
             p.setdefault("errors",[]).append({"ticker":t,"error":str(e)})
 
