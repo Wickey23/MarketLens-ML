@@ -108,7 +108,7 @@ def merge(old,new,learning=None):
     try:
         raw=download_prices(new["ticker"],"2010-01-01")
         regimes=classify_regime(raw)
-        new["options"]["opportunity_radar"]=build_opportunity_radar(raw,((new["options"].get("chain") or {}).get("contracts") or []),regimes,new.get("regime"),new.get("evidence") or {},float(new["price"]),learning=learning)
+        new["options"]["opportunity_radar"]=build_opportunity_radar(raw,((new["options"].get("chain") or {}).get("contracts") or []),regimes,new.get("regime"),new.get("evidence") or {},float(new["price"]),learning=learning,context=new.get("company_context") or {},relative_strength=new.get("relative_strength") or {},model_probability=new.get("probability_5d_up"))
     except Exception as exc:
         new["options"]["opportunity_radar"]={"state":"unavailable","opportunities":[],"watchlist":[],"error":str(exc)}
     return new
