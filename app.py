@@ -268,7 +268,7 @@ def api_live_quotes():
             "retrieved_at": datetime.now(timezone.utc).isoformat(),
             "quotes": quotes,
             "errors": errors,
-            "quote_note": "Near-live Yahoo Finance underlying quotes. Exchange/broker data may be delayed or differ.",
+            "quote_note": ("Provider-backed underlying quotes." if os.getenv("FINNHUB_API_KEY") else "Near-live Yahoo Finance underlying quotes. Exchange/broker data may be delayed or differ."),
         }
     )
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
@@ -284,6 +284,7 @@ def health():
             "commit": os.getenv("VERCEL_GIT_COMMIT_SHA"),
             "data_branch": "market-data",
             "live_quote_ttl_seconds": _LIVE_QUOTE_TTL_SECONDS,
+            "live_provider": "finnhub" if os.getenv("FINNHUB_API_KEY") else "yahoo-fallback",
         }
     )
 
