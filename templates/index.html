@@ -398,37 +398,70 @@ function radarCandidates(){
     .filter(x=>Number(x.dte||0)>=2&&x.entry_quote!=null&&x.samples>=80);
 }
 function analyzeRadarCandidate(sym){
-  const x=radarCandidates().find(z=>z.contract_symbol===sym);
+  const x=radarCandidates().find(z=>z.contract_symbol===sym)||
+          Object.values((((C.options||{}).opportunity_radar||{}).guidance)||{}).find(z=>z&&z.contract_symbol===sym);
   if(!x)return;
   selectContract(x.contract_symbol||'',Number(x.strike),x.type,x.expiration);
 }
+function prepareRadarPaper(sym){
+  analyzeRadarCandidate(sym);
+  if(!selectedContract)return;
+  paperOrderType.value='market';
+  toggleLimit();
+  paperTrade();
+  setTimeout(()=>orderTicket.scrollIntoView({behavior:'smooth',block:'center'}),50);
+}
+function guidanceFallback(){
+  const rows=radarCandidates().filter(x=>x.state==='investigate');
+  if(!rows.length)return {state:'no_strong_contract'};
+  const byBalance=[...rows].sort((a,b)=>(b.score||0)-(a.score||0))[0];
+  const byReturn=[...rows].filter(x=>x.expected_return_on_debit!=null).sort((a,b)=>b.expected_return_on_debit-a.expected_return_on_debit)[0]||byBalance;
+  const byProb=[...rows].filter(x=>x.prob_profit!=null).sort((a,b)=>b.prob_profit-a.prob_profit)[0]||byBalance;
+  return {state:'strong_candidates',best_overall:byBalance,highest_upside:byReturn,higher_probability:byProb};
+}
+function returnPctFromPnl(x,key){
+  const debit=Number(x.entry_quote||0)*100,p=Number(x[key]);
+  return debit>0&&Number.isFinite(p)?p/debit:null;
+}
 function renderReturnOutlook(){
   const el=document.getElementById('returnOutlook');if(!el||!C)return;
-  const rows=radarCandidates();
-  if(!rows.length){el.innerHTML='<div class="empty">No option currently has enough quality history for a return outlook. That is a valid no-trade result.</div>';return}
-  const byBalance=[...rows].sort((a,b)=>(b.score||0)-(a.score||0))[0];
-  const byReturn=[...rows].filter(x=>x.expected_return_on_debit!=null).sort((a,b)=>b.expected_return_on_debit-a.expected_return_on_debit)[0];
-  const byProb=[...rows].filter(x=>x.prob_profit!=null).sort((a,b)=>b.prob_profit-a.prob_profit)[0];
+  const radar=((C.options||{}).opportunity_radar)||{},g=radar.guidance||guidanceFallback();
+  if(!g||g.state!=='strong_candidates'){
+    const watch=(radar.watchlist||[]).length;
+    el.innerHTML='<div class="empty"><div class="value" style="font-size:20px">NO STRONG CONTRACT RIGHT NOW</div><div class="sub">None of the screened contracts clears the full execution, historical-payoff and evidence gates. '+(watch?watch+' contract'+(watch===1?' is':'s are')+' on the watchlist, but MarketLens is not elevating them to a strong candidate.':'')+'</div></div>';
+    return;
+  }
   const picks=[
-    ['Best balance',byBalance,'Highest combined quality score across historical payoff, execution, decay and liquidity.'],
-    ['Highest historical mean return',byReturn,'Highest mean return-on-debit in the historical replay among currently screened contracts.'],
-    ['Highest historical profit frequency',byProb,'Highest share of historical replay outcomes finishing above breakeven.']
+    ['Best overall',g.best_overall,'Highest combined evidence after execution quality, historical payoff, uncertainty, downside and validated model evidence are considered.'],
+    ['Higher upside',g.highest_upside,'Highest historical mean return on debit among contracts that already cleared the quality gates.'],
+    ['Higher probability / lower risk',g.higher_probability,'Highest uncertainty-adjusted historical profit frequency among contracts that cleared the quality gates.']
   ].filter(x=>x[1]);
   el.innerHTML=picks.map(([lens,x,why])=>{
     const ci=x.prob_profit_ci95||[null,null];
     const band=(x.p10_pnl_per_contract==null||x.p90_pnl_per_contract==null)?'—':money(x.p10_pnl_per_contract)+' to '+money(x.p90_pnl_per_contract);
+    const retBand=(returnPctFromPnl(x,'p10_pnl_per_contract')==null||returnPctFromPnl(x,'p90_pnl_per_contract')==null)?'—':pc(returnPctFromPnl(x,'p10_pnl_per_contract'))+' to '+pc(returnPctFromPnl(x,'p90_pnl_per_contract'));
     const ciText=(ci[0]==null||ci[1]==null)?'—':pc(ci[0])+'–'+pc(ci[1]);
-    return '<div class="outlookCard"><span class="lensTag">'+esc(lens)+'</span><h3>'+esc(C.ticker)+' '+esc(x.expiration)+' '+money(x.strike)+' '+esc(String(x.type||'').toUpperCase())+'</h3>'+
-      '<div class="outlookMetric">'+pc(x.expected_return_on_debit)+'</div><div class="sub">Historical mean return on debit</div>'+
+    const score=x.combined_evidence_score!=null?x.combined_evidence_score:x.score;
+    return '<div class="outlookCard">'+
+      '<span class="lensTag">'+esc(lens)+'</span><h3>'+esc(C.ticker)+' '+esc(x.expiration)+' '+money(x.strike)+' '+esc(String(x.type||'').toUpperCase())+'</h3>'+
+      '<div class="outlookMetric">'+pc(x.expected_return_on_debit)+'</div><div class="sub">Historical mean return on debit · not a forecast</div>'+
+      '<div class="kv"><span>Combined evidence</span><b>'+num(score,1)+'/100</b></div>'+
+      '<div class="kv"><span>Current ask / debit</span><b>'+money(x.ask!=null?x.ask:x.entry_quote)+' / '+money(Number(x.ask!=null?x.ask:x.entry_quote||0)*100)+'</b></div>'+
       '<div class="kv"><span>Profit frequency</span><b>'+pc(x.prob_profit)+'</b></div>'+
       '<div class="kv"><span>95% interval</span><b>'+ciText+'</b></div>'+
       '<div class="kv"><span>Median P/L</span><b>'+money(x.median_pnl_per_contract)+'</b></div>'+
-      '<div class="kv"><span>10th–90th P/L band</span><b>'+band+'</b></div>'+
+      '<div class="kv"><span>10th–90th P/L</span><b>'+band+'</b></div>'+
+      '<div class="kv"><span>10th–90th return</span><b>'+retBand+'</b></div>'+
       '<div class="kv"><span>Full-premium-loss frequency</span><b>'+pc(x.prob_total_premium_loss)+'</b></div>'+
-      '<div class="outlookBand">'+esc(why)+' '+esc((x.reasons||[]).join(' · '))+'</div>'+
-      '<button class="btn radarAnalyzeBtn" data-sym="'+esc(x.contract_symbol||'')+'">Analyze this contract</button></div>';
+      '<div class="kv"><span>Spread / theta per day</span><b>'+pc(x.spread_pct)+' / '+pc(x.theta_cost_pct_per_day)+'</b></div>'+
+      '<div class="kv"><span>IV / realized vol</span><b>'+((x.iv_rv_ratio==null)?'—':num(x.iv_rv_ratio,2)+'×')+'</b></div>'+
+      '<div class="kv"><span>OI / volume</span><b>'+Number(x.open_interest||0).toLocaleString()+' / '+Number(x.volume||0).toLocaleString()+'</b></div>'+
+      '<div class="outlookBand"><b>Why this surfaced:</b> '+esc(why)+' '+esc((x.reasons||[]).join(' · '))+'</div>'+
+      ((x.risks||[]).length?'<div class="outlookBand" style="margin-top:7px"><b>What can go wrong:</b> '+esc(x.risks.join(' · '))+'</div>':'')+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn radarAnalyzeBtn" data-sym="'+esc(x.contract_symbol||'')+'">Analyze</button><button class="btn primary radarPaperBtn" data-sym="'+esc(x.contract_symbol||'')+'">Prepare paper order</button></div></div>';
   }).join('');
   el.querySelectorAll('.radarAnalyzeBtn').forEach(btn=>btn.onclick=()=>analyzeRadarCandidate(btn.dataset.sym));
+  el.querySelectorAll('.radarPaperBtn').forEach(btn=>btn.onclick=()=>prepareRadarPaper(btn.dataset.sym));
 }
 function renderOptions(){
   const o=C.options||{},sum=o.summary||{},ctx=C.company_context||{},er=ctx.earnings||{};
