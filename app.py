@@ -166,7 +166,7 @@ function analyzeTicker(){
   const t=tickerInput.value.trim().toUpperCase();
   if(!/^[A-Z][A-Z0-9.\-]{0,7}$/.test(t)){runStatus.textContent='Enter a valid ticker';return}
   const existing=P&&P.tickers&&P.tickers.find(x=>x.ticker===t);
-  if(existing){const btn=[...tabs.children].find(x=>x.textContent===t);sel(t,btn);runStatus.textContent=t+' loaded';return}
+  if(existing){const btn=[...tabs.children].find(x=>x.textContent===t);sel(t,btn);runStatus.textContent=t+' loaded · refreshing…'}
   runResearch(t);
 }
 async function reloadData(selectTicker=null){
