@@ -1,6 +1,10 @@
 from __future__ import annotations
 from datetime import datetime, timezone, date
 import math
+import os
+import json
+import urllib.parse
+import urllib.request
 from zoneinfo import ZoneInfo
 from statistics import NormalDist
 import yfinance as yf
@@ -21,6 +25,145 @@ def _i(x, default=0):
     except Exception:
         return default
 
+
+
+
+def _tradier_get(path, params):
+    token=os.getenv("TRADIER_ACCESS_TOKEN")
+    if not token:
+        raise RuntimeError("Tradier production token is not configured")
+    query=urllib.parse.urlencode(params)
+    url=f"https://api.tradier.com/v1/{path}?{query}"
+    req=urllib.request.Request(
+        url,
+        headers={
+            "Authorization":f"Bearer {token}",
+            "Accept":"application/json",
+            "User-Agent":"MarketLens-ML/1.0",
+        },
+    )
+    with urllib.request.urlopen(req,timeout=12) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _as_list(value):
+    if value is None:
+        return []
+    return value if isinstance(value,list) else [value]
+
+
+def _tradier_expirations(ticker, max_expiries):
+    body=_tradier_get("markets/options/expirations",{
+        "symbol":ticker,
+        "includeAllRoots":"false",
+        "strikes":"false",
+        "contractSize":"false",
+        "expirationType":"false",
+    })
+    dates=((body.get("expirations") or {}).get("date"))
+    return [str(x) for x in _as_list(dates) if x][:max_expiries]
+
+
+def _tradier_rows_for_expiration(ticker, expiration, spot, market_today, now, strikes_each_side):
+    body=_tradier_get("markets/options/chains",{
+        "symbol":ticker,
+        "expiration":expiration,
+        "greeks":"true",
+    })
+    raw=_as_list((body.get("options") or {}).get("option"))
+    parsed=[]
+    dte=max((date.fromisoformat(expiration)-market_today).days,0)
+    for row in raw:
+        strike=_f(row.get("strike"))
+        side=str(row.get("option_type") or "").lower()
+        if strike is None or side not in ("call","put"):
+            continue
+        bid=_f(row.get("bid")); ask=_f(row.get("ask")); last=_f(row.get("last"))
+        mid=(bid+ask)/2 if bid is not None and ask is not None and ask>=bid and (bid>0 or ask>0) else last
+        breakeven=(strike+mid if side=="call" else strike-mid) if mid is not None else None
+        spread=(ask-bid) if bid is not None and ask is not None else None
+        spread_pct=(spread/mid) if spread is not None and mid and mid>0 else None
+        quote_ms=max(_i(row.get("bid_date"),0),_i(row.get("ask_date"),0))
+        quote_dt=datetime.fromtimestamp(quote_ms/1000,timezone.utc) if quote_ms else None
+        quote_age=max(0.0,(now-quote_dt).total_seconds()/3600.0) if quote_dt else None
+        trade_ms=_i(row.get("trade_date"),0)
+        trade_dt=datetime.fromtimestamp(trade_ms/1000,timezone.utc) if trade_ms else None
+        g=row.get("greeks") or {}
+        iv=_f(g.get("smv_vol"))
+        if iv is None: iv=_f(g.get("mid_iv"))
+        parsed.append({
+            "contract_symbol":str(row.get("symbol") or ""),
+            "type":side,
+            "expiration":str(row.get("expiration_date") or expiration),
+            "dte":dte,
+            "strike":strike,
+            "bid":bid,"ask":ask,"mid":_f(mid),"last":last,
+            "iv":iv,
+            "volume":_i(row.get("volume")),
+            "open_interest":_i(row.get("open_interest")),
+            "in_the_money":bool((side=="call" and spot>strike) or (side=="put" and spot<strike)),
+            "last_trade":trade_dt.isoformat() if trade_dt else None,
+            "quote_age_hours":_f(quote_age),
+            "breakeven":_f(breakeven),
+            "breakeven_move":_f((breakeven/spot)-1) if breakeven and spot else None,
+            "spread_pct":_f(spread_pct),
+            "provider_greeks":{
+                "delta":_f(g.get("delta")),
+                "gamma":_f(g.get("gamma")),
+                "theta":_f(g.get("theta")),
+                "vega":_f(g.get("vega")),
+                "updated_at":g.get("updated_at"),
+            },
+        })
+    keep=[]
+    for side in ("call","put"):
+        rows=[x for x in parsed if x["type"]==side]
+        rows.sort(key=lambda x:abs(x["strike"]-spot))
+        keep.extend(rows[:strikes_each_side*2+1])
+    return keep
+
+
+def _tradier_option_snapshot(ticker, spot, annual_rv, max_expiries, strikes_each_side):
+    now=datetime.now(timezone.utc)
+    market_today=datetime.now(ZoneInfo("America/New_York")).date()
+    risk_free,risk_free_source=_risk_free_rate()
+    expiries=_tradier_expirations(ticker,max_expiries)
+    rows=[]
+    for exp in expiries:
+        rows.extend(_tradier_rows_for_expiration(ticker,exp,spot,market_today,now,strikes_each_side))
+    liquid=[]
+    for row in rows:
+        if not row["mid"] or row["mid"]<=0 or not (row["open_interest"]>=25 or row["volume"]>=5):
+            continue
+        g=row.pop("provider_greeks",{}) or {}
+        enriched=enrich_contract(row,spot,annual_rv,risk_free)
+        if g.get("delta") is not None: enriched["delta"]=g["delta"]
+        if g.get("gamma") is not None: enriched["gamma"]=g["gamma"]
+        if g.get("theta") is not None:
+            enriched["theta_per_share_per_day"]=g["theta"]
+            enriched["theta_per_contract_per_day"]=_f(g["theta"]*100)
+            debit=enriched.get("entry_debit_per_contract") or 0
+            enriched["theta_cost_pct_per_day"]=_f(abs(enriched["theta_per_contract_per_day"])/debit) if debit>0 else None
+        if g.get("vega") is not None:
+            enriched["vega_per_share_per_vol_point"]=g["vega"]
+            enriched["vega_per_contract_per_vol_point"]=_f(g["vega"]*100)
+        enriched["greeks_source"]="Tradier / ORATS (hourly)"
+        enriched["greeks_updated_at"]=g.get("updated_at")
+        liquid.append(enriched)
+    liquid.sort(key=lambda r:(r["dte"],abs((r["strike"] or spot)-spot),r["spread_pct"] if r["spread_pct"] is not None else 99))
+    return {
+        "source":"Tradier Brokerage API",
+        "quote_note":"Production Tradier brokerage market data is real-time for U.S. stocks/options. Greeks and volatility are ORATS data updated hourly.",
+        "retrieved_at":now.isoformat(),
+        "risk_free_rate":risk_free,
+        "risk_free_source":risk_free_source,
+        "expirations":expiries,
+        "contracts":liquid[:240],
+        "contracts_scanned":len(rows),
+        "liquid_contracts":len(liquid),
+        "realtime":True,
+        "greeks_frequency":"hourly",
+    }
 
 def _cdf(z):
     return NormalDist().cdf(z)
@@ -139,11 +282,16 @@ def enrich_contract(r, spot, annual_rv, risk_free):
 
 
 def option_snapshot(ticker:str, spot:float, annual_rv:float|None=None, max_expiries:int=6, strikes_each_side:int=8):
-    """Best-effort delayed option-chain snapshot from yfinance.
+    """Return the best available option-chain snapshot.
 
-    Greeks are Black-Scholes estimates using the chain IV and a Treasury-yield proxy.
-    They are model estimates, not exchange-provided values.
+    Prefer Tradier production data when a production brokerage token is configured;
+    otherwise retain the yfinance fallback for research continuity.
     """
+    if os.getenv("TRADIER_ACCESS_TOKEN"):
+        try:
+            return _tradier_option_snapshot(ticker,spot,annual_rv,max_expiries,strikes_each_side)
+        except Exception:
+            pass
     t=yf.Ticker(ticker)
     expiries=list(t.options)[:max_expiries]
     rows=[]
@@ -204,6 +352,8 @@ def option_snapshot(ticker:str, spot:float, annual_rv:float|None=None, max_expir
     liquid.sort(key=lambda r:(r["dte"],abs((r["strike"] or spot)-spot),r["spread_pct"] if r["spread_pct"] is not None else 99))
     return {
         "source":"Yahoo Finance via yfinance",
+        "realtime":False,
+        "greeks_frequency":"snapshot/model",
         "quote_note":"Quotes may be delayed or stale; verify with a brokerage before acting. Greeks are Black-Scholes estimates without dividend-yield or early-exercise adjustments, not exchange-provided values.",
         "retrieved_at":now.isoformat(),
         "risk_free_rate":risk_free,
