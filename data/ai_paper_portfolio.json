@@ -34,8 +34,9 @@
         "Directional ML model has not demonstrated strong out-of-sample discrimination"
       ],
       "entry_research_generated_at": "2026-09-23T17:23:28.433018+00:00",
-      "last_mark": 1.53,
-      "unrealized_pnl": -5.000000000000004
+      "last_mark": 2.05,
+      "unrealized_pnl": 46.99999999999997,
+      "exit_signal": "hold"
     }
   ],
   "closed": [],
@@ -63,6 +64,12 @@
       "equity": 9995.0,
       "cash": 9842.0,
       "open_value": 153.0
+    },
+    {
+      "at": "2026-09-23T17:33:56.978787+00:00",
+      "equity": 10047.0,
+      "cash": 9842.0,
+      "open_value": 204.99999999999997
     }
   ],
   "decisions": [
@@ -205,6 +212,6 @@
       "strategy_version": "v2_conservative"
     }
   ],
-  "updated_at": "2026-09-23T17:30:16.212022+00:00",
-  "last_processed_snapshot": "2026-09-23T17:30:16.211849+00:00"
+  "updated_at": "2026-09-23T17:33:56.978787+00:00",
+  "last_processed_snapshot": "2026-09-23T17:33:56.978647+00:00"
 }
