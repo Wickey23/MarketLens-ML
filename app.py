@@ -7,20 +7,20 @@ import os
 import re
 import time
 import urllib.error
-import urllib.request
 import urllib.parse
+import urllib.request
 
 app = Flask(__name__)
-
 DATA = Path(__file__).with_name("data") / "dashboard.json"
+
 _TRIGGER_COOLDOWN_SECONDS = 30
+_LIVE_QUOTE_TTL_SECONDS = 10
 _trigger_last_seen = {}
-_LIVE_QUOTE_TTL_SECONDS = 8
 _live_quote_cache = {}
 
 
 def read_data():
-    """Read the latest research snapshot from the dedicated market-data branch."""
+    """Read the latest generated research state from the dedicated data branch."""
     url = "https://raw.githubusercontent.com/Wickey23/MarketLens-ML/market-data/data/dashboard.json"
     try:
         req = urllib.request.Request(
@@ -54,28 +54,27 @@ def _snapshot_quote(ticker):
     )
     if not row:
         return None
-    ts = row.get("fast_refreshed_at") or row.get("research_refreshed_at") or row.get("as_of")
     return {
         "ticker": ticker,
         "price": row.get("price"),
         "previous_close": None,
-        "change_1d": row.get("change_1d"),
-        "quote_time": ts,
+        "open": None,
+        "high": None,
+        "low": None,
+        "change": None,
+        "change_pct": row.get("change_1d"),
+        "market_timestamp": row.get("fast_refreshed_at") or row.get("as_of"),
         "exchange": None,
-        "currency": "USD",
-        "source": "MarketLens research snapshot",
+        "currency": None,
+        "provider": "MarketLens research snapshot",
+        "realtime": False,
         "delayed": True,
-        "fallback": True,
+        "note": "Near-live quote provider unavailable; showing the latest research snapshot.",
     }
 
 
-def _fetch_yahoo_quote(ticker):
-    """Best-effort near-live underlying quote with short server-side caching."""
-    now = time.monotonic()
-    cached = _live_quote_cache.get(ticker)
-    if cached and now - cached["cached_at"] < _LIVE_QUOTE_TTL_SECONDS:
-        return cached["quote"]
-
+def _yahoo_live_quote(ticker):
+    """Best-effort near-live underlying quote without an extra server dependency."""
     symbol = urllib.parse.quote(ticker, safe="")
     url = (
         f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
@@ -90,54 +89,73 @@ def _fetch_yahoo_quote(ticker):
         },
     )
     with urllib.request.urlopen(req, timeout=5) as response:
-        payload = json.loads(response.read().decode("utf-8"))
+        body = json.loads(response.read().decode("utf-8"))
 
-    result = (((payload.get("chart") or {}).get("result")) or [None])[0]
+    result = ((body.get("chart") or {}).get("result") or [None])[0]
     if not result:
-        raise ValueError("No quote returned")
+        raise ValueError("No Yahoo quote returned")
 
     meta = result.get("meta") or {}
     timestamps = result.get("timestamp") or []
     price = meta.get("regularMarketPrice")
     if price is None:
-        closes = ((((result.get("indicators") or {}).get("quote")) or [{}])[0].get("close")) or []
+        closes = (
+            (((result.get("indicators") or {}).get("quote")) or [{}])[0].get("close")
+            or []
+        )
         usable = [x for x in closes if x is not None]
         price = usable[-1] if usable else None
-    if price is None:
-        raise ValueError("Quote price unavailable")
 
     prev = meta.get("previousClose")
     if prev is None:
         prev = meta.get("chartPreviousClose")
-    quote_time = meta.get("regularMarketTime") or (timestamps[-1] if timestamps else None)
 
-    quote = {
+    change = (
+        float(price) - float(prev)
+        if price is not None and prev not in (None, 0)
+        else None
+    )
+    change_pct = change / float(prev) if change is not None and prev not in (None, 0) else None
+    ts = meta.get("regularMarketTime") or (timestamps[-1] if timestamps else None)
+
+    return {
         "ticker": ticker,
-        "price": float(price),
+        "price": float(price) if price is not None else None,
         "previous_close": float(prev) if prev is not None else None,
-        "change_1d": ((float(price) / float(prev)) - 1.0) if prev not in (None, 0) else None,
-        "quote_time": datetime.fromtimestamp(int(quote_time), tz=timezone.utc).isoformat()
-        if quote_time
-        else None,
+        "open": meta.get("regularMarketOpen"),
+        "high": meta.get("regularMarketDayHigh"),
+        "low": meta.get("regularMarketDayLow"),
+        "change": change,
+        "change_pct": change_pct,
+        "market_timestamp": datetime.fromtimestamp(int(ts), timezone.utc).isoformat() if ts else None,
         "exchange": meta.get("exchangeName"),
         "currency": meta.get("currency"),
         "market_state": meta.get("marketState"),
-        "source": "Yahoo Finance chart",
+        "provider": "Yahoo Finance chart",
+        "realtime": False,
         "delayed": True,
-        "fallback": False,
+        "note": "Best-effort near-live underlying quote; may be delayed. Options and model evidence remain research snapshots.",
     }
-    _live_quote_cache[ticker] = {"cached_at": now, "quote": quote}
-    return quote
 
 
 def live_quote(ticker):
+    now = time.monotonic()
+    cached = _live_quote_cache.get(ticker)
+    if cached and now - cached["at"] < _LIVE_QUOTE_TTL_SECONDS:
+        return cached["payload"]
+
     try:
-        return _fetch_yahoo_quote(ticker)
+        out = _yahoo_live_quote(ticker)
     except Exception:
-        return _snapshot_quote(ticker)
+        out = _snapshot_quote(ticker)
+
+    if out is not None:
+        out["served_at"] = datetime.now(timezone.utc).isoformat()
+        _live_quote_cache[ticker] = {"at": now, "payload": out}
+    return out
 
 
-def fetch_live_quotes(tickers):
+def live_quotes(tickers):
     quotes = []
     errors = []
     workers = max(1, min(6, len(tickers)))
@@ -147,9 +165,10 @@ def fetch_live_quotes(tickers):
             ticker = jobs[job]
             try:
                 quote = job.result()
-                if quote is None:
-                    raise ValueError("Quote unavailable")
-                quotes.append(quote)
+                if quote:
+                    quotes.append(quote)
+                else:
+                    errors.append({"ticker": ticker, "error": "Quote unavailable"})
             except Exception as exc:
                 errors.append({"ticker": ticker, "error": str(exc)})
     quotes.sort(key=lambda x: tickers.index(x["ticker"]))
@@ -175,44 +194,34 @@ def api_live_quote():
     ticker = str(request.args.get("ticker") or "").upper().strip()
     if not re.fullmatch(r"[A-Z][A-Z0-9.\-]{0,7}", ticker):
         return jsonify({"ok": False, "error": "Invalid ticker"}), 400
-    q = live_quote(ticker)
-    if q is None:
+    quote = live_quote(ticker)
+    if quote is None:
         return jsonify({"ok": False, "error": "Quote unavailable", "ticker": ticker}), 502
-    response = jsonify(
-        {
-            "ok": True,
-            **q,
-            "change_pct": q.get("change_1d"),
-            "market_timestamp": q.get("quote_time"),
-            "provider": q.get("source"),
-            "realtime": False,
-            "served_at": datetime.now(timezone.utc).isoformat(),
-            "note": "Best-effort near-live underlying quote. Exchange/broker quotes may be delayed or differ. Options use the scheduled research snapshot.",
-        }
-    )
+    response = jsonify({"ok": True, **quote})
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     return response
 
 
 @app.get("/api/live-quotes")
-def live_quotes():
+def api_live_quotes():
     raw = str(request.args.get("tickers") or "").upper().strip()
     tickers = [x.strip() for x in raw.split(",") if x.strip()]
     if not tickers:
         tickers = ["SPY", "VOO", "QQQ", "VXUS"]
     tickers = list(dict.fromkeys(tickers))
     if len(tickers) > 12 or any(
-        not re.fullmatch(r"[A-Z][A-Z0-9.\-]{0,7}", t) for t in tickers
+        not re.fullmatch(r"[A-Z][A-Z0-9.\-]{0,7}", ticker) for ticker in tickers
     ):
         return jsonify({"ok": False, "error": "Invalid ticker list"}), 400
-    quotes, errors = fetch_live_quotes(tickers)
+
+    quotes, errors = live_quotes(tickers)
     response = jsonify(
         {
             "ok": bool(quotes),
             "retrieved_at": datetime.now(timezone.utc).isoformat(),
             "quotes": quotes,
             "errors": errors,
-            "quote_note": "Near-live underlying quote overlay. Options and research metrics remain snapshot-based.",
+            "quote_note": "Near-live Yahoo Finance underlying quotes. Exchange/broker data may be delayed or differ.",
         }
     )
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
@@ -249,19 +258,14 @@ def run_research():
     last = _trigger_last_seen.get(client)
     if last is not None and now - last < _TRIGGER_COOLDOWN_SECONDS:
         wait = max(1, int(_TRIGGER_COOLDOWN_SECONDS - (now - last)))
-        return jsonify(
-            {"ok": False, "error": f"Please wait {wait}s before starting another refresh"}
-        ), 429
+        return jsonify({"ok": False, "error": f"Please wait {wait}s before starting another refresh"}), 429
     _trigger_last_seen[client] = now
 
     payload = {"ref": "main"}
     if ticker:
         payload["inputs"] = {"ticker": ticker}
     workflow = "fast-refresh.yml"
-    url = (
-        "https://api.github.com/repos/Wickey23/MarketLens-ML/actions/workflows/"
-        f"{workflow}/dispatches"
-    )
+    url = f"https://api.github.com/repos/Wickey23/MarketLens-ML/actions/workflows/{workflow}/dispatches"
     req = urllib.request.Request(
         url,
         data=json.dumps(payload).encode(),
