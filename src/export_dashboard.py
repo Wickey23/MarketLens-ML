@@ -301,6 +301,7 @@ def analyze(ticker):
 
     return {
         "ticker":ticker,
+        "research_refreshed_at":datetime.now(timezone.utc).isoformat(),
         "as_of":str(raw.index[-1].date()),
         "price":sf(close.iloc[-1]),
         "change_1d":sf(daily.iloc[-1]),
