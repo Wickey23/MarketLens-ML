@@ -6,16 +6,7 @@ on:
         description: "Optional ticker to analyze and merge into dashboard data"
         required: false
         type: string
-  push:
-    branches: [main]
-    paths:
-      - "src/**"
-      - "requirements-ml.txt"
-      - ".github/workflows/daily-research.yml"
   schedule:
-    - cron: "0 15 * * 1-5"
-    - cron: "30 17 * * 1-5"
-    - cron: "15 20 * * 1-5"
     - cron: "30 22 * * 1-5"
 
 permissions:
