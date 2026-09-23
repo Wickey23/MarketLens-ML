@@ -103,6 +103,7 @@ table{width:100%;border-collapse:collapse;font-size:12px;min-width:900px}th,td{t
 <section id="contractPanel" class="box contractPanel">
 <div class="controls"><div><div class="label">CONTRACT ANALYZER</div><div class="value" id="contractTitle" style="font-size:21px">—</div></div><button class="btn primary" onclick="paperTrade()">Paper trade 1 contract</button></div>
 <div class="statline" id="contractStats"></div>
+<div class="grid2" style="margin-top:12px"><div class="panel"><div class="label">CONTRACT CHECKLIST</div><div id="contractChecks"></div></div><div class="panel"><div class="label">TRADE MATH AT EXPIRATION</div><div id="tradeMath"></div></div></div>
 <div class="grid2" style="margin-top:12px">
 <div class="panel"><div class="label">IN PLAIN ENGLISH</div><ul class="explain" id="contractExplain"></ul></div>
 <div class="panel"><div class="label">SCENARIO SIMULATOR</div>
@@ -122,7 +123,7 @@ table{width:100%;border-collapse:collapse;font-size:12px;min-width:900px}th,td{t
 <div class="card"><div class="label">REALIZED P/L</div><div class="value" id="paperReal">—</div></div>
 </section>
 <section class="box table"><div class="controls"><div><div class="label">OPEN PAPER POSITIONS</div><div class="sub">Entry uses ask when available; exit/mark uses bid when available. This intentionally includes the quoted spread.</div></div><button class="btn" onclick="resetPaper()">Reset simulator</button></div>
-<table><thead><tr><th>Ticker</th><th>Contract</th><th>Opened</th><th>Entry</th><th>Current exit mark</th><th>P/L</th><th>Underlying</th><th></th></tr></thead><tbody id="paperOpen"></tbody></table></section>
+<table><thead><tr><th>Ticker</th><th>Contract</th><th>Opened</th><th>Entry</th><th>Current exit mark</th><th>P/L</th><th>Underlying</th><th>Underlying move</th><th>Entry context</th><th></th></tr></thead><tbody id="paperOpen"></tbody></table></section>
 <section class="box table"><div class="label">CLOSED PAPER POSITIONS</div>
 <table><thead><tr><th>Ticker</th><th>Contract</th><th>Entry</th><th>Exit</th><th>P/L</th><th>Opened</th><th>Closed</th></tr></thead><tbody id="paperClosed"></tbody></table></section>
 <section class="box" style="margin-top:12px"><div class="label">HISTORICAL REPLAY · UNDERLYING ONLY</div><div class="sub">Use this to inspect what happened after an earlier date without pretending we have historical option quotes. Exact option replay requires historical chain data from a dedicated provider.</div>
@@ -227,6 +228,15 @@ function selectContract(sym,strike,type,exp){
     ['Vega/1pt',money(x.vega_per_contract_per_vol_point)],['Spread',pc(x.spread_pct)],['Open interest',x.open_interest],['Max debit',money(x.max_loss_per_contract)],['BE benchmark',pc(x.historical_vol_prob_breakeven)]
   ].map(([a,b])=>'<div class="stat"><div class="label">'+a+'</div><div style="margin-top:7px;font-weight:700">'+b+'</div></div>').join('');
   contractExplain.innerHTML=contractExplanation(x).map(v=>'<li>'+esc(v)+'</li>').join('');
+  const checks=x.quality_checks||[];
+  contractChecks.innerHTML=checks.map(q=>'<div class="kv"><span>'+esc(q.name)+'</span><span><b>'+esc(q.state)+'</b><div class="sub">'+esc(q.detail)+'</div></span></div>').join('')||'<div class="sub">Awaiting refreshed contract diagnostics.</div>';
+  const debit=(x.ask&&x.ask>0?x.ask:x.mid)||0, be=x.breakeven;
+  tradeMath.innerHTML='<div class="kv"><span>1-contract debit</span><b>'+money(debit*100)+'</b></div>'+
+    '<div class="kv"><span>Maximum loss (long option)</span><b>'+money(debit*100)+'</b></div>'+
+    '<div class="kv"><span>Expiration breakeven</span><b>'+money(be)+'</b></div>'+
+    '<div class="kv"><span>Move needed to breakeven</span><b>'+pc(Math.abs(x.breakeven_move||0))+'</b></div>'+
+    '<div class="kv"><span>Modeled theta / day</span><b>'+money(x.theta_per_contract_per_day)+'</b></div>'+
+    '<div class="kv"><span>Theta as % of debit / day</span><b>'+pc(x.theta_cost_pct_per_day)+'</b></div>';
   scMove.value=0;scDays.value=0;scIv.value=0;scenario();
   contractPanel.scrollIntoView({behavior:'smooth',block:'start'});
 }
@@ -255,7 +265,7 @@ function paperState(){try{return JSON.parse(localStorage.getItem('marketlens_pap
 function savePaper(s){localStorage.setItem('marketlens_paper_v1',JSON.stringify(s))}
 function paperTrade(){
  if(!selectedContract)return;const x=selectedContract,s=paperState(),entry=(x.ask&&x.ask>0)?x.ask:x.mid;if(!entry){runStatus.textContent='No usable entry quote';return}
- s.open.push({id:Date.now(),ticker:C.ticker,type:x.type,strike:x.strike,expiration:x.expiration,contract_symbol:x.contract_symbol||'',qty:1,entry_price:entry,entry_spot:C.price,entry_iv:x.iv,opened_at:new Date().toISOString()});savePaper(s);runStatus.textContent='Paper trade added';renderPaper();
+ s.open.push({id:Date.now(),ticker:C.ticker,type:x.type,strike:x.strike,expiration:x.expiration,contract_symbol:x.contract_symbol||'',qty:1,entry_price:entry,entry_spot:C.price,entry_iv:x.iv,entry_delta:x.delta,entry_theta:x.theta_per_contract_per_day,entry_vega:x.vega_per_contract_per_vol_point,entry_spread_pct:x.spread_pct,entry_model_output:C.probability_5d_up,entry_evidence:(C.evidence||{}).state||null,opened_at:new Date().toISOString()});savePaper(s);runStatus.textContent='Paper trade added';renderPaper();
 }
 function lookupMark(p){
  const t=(P.tickers||[]).find(x=>x.ticker===p.ticker);if(!t)return{mark:null,spot:null};
@@ -266,11 +276,11 @@ function lookupMark(p){
 }
 function renderPaper(){
  const s=paperState();let unreal=0,real=0,cash=10000;paperOpen.innerHTML='';paperClosed.innerHTML='';
- s.open.forEach(p=>{const q=lookupMark(p),cost=p.entry_price*100*p.qty;cash-=cost;const val=q.mark==null?null:q.mark*100*p.qty,pl=val==null?null:val-cost;if(pl!=null)unreal+=pl;paperOpen.innerHTML+='<tr><td>'+p.ticker+'</td><td>'+p.expiration+' '+money(p.strike)+' '+p.type+'</td><td>'+new Date(p.opened_at).toLocaleDateString()+'</td><td>'+money(p.entry_price)+'</td><td>'+money(q.mark)+'</td><td class="'+(pl==null?'':pl>=0?'good':'bad')+'">'+(pl==null?'—':((pl>=0?'+':'')+money(pl)))+'</td><td>'+money(q.spot)+'</td><td><button class="btn" onclick="closePaper('+p.id+')">Close</button></td></tr>'});
+ s.open.forEach(p=>{const q=lookupMark(p),cost=p.entry_price*100*p.qty;cash-=cost;const val=q.mark==null?null:q.mark*100*p.qty,pl=val==null?null:val-cost;if(pl!=null)unreal+=pl;paperOpen.innerHTML+='<tr><td>'+p.ticker+'</td><td>'+p.expiration+' '+money(p.strike)+' '+p.type+'</td><td>'+new Date(p.opened_at).toLocaleDateString()+'</td><td>'+money(p.entry_price)+'</td><td>'+money(q.mark)+'</td><td class="'+(pl==null?'':pl>=0?'good':'bad')+'">'+(pl==null?'—':((pl>=0?'+':'')+money(pl)))+'</td><td>'+money(q.spot)+'</td><td>'+((q.spot==null||p.entry_spot==null)?'—':pc(q.spot/p.entry_spot-1))+'</td><td>'+(p.entry_evidence?esc(p.entry_evidence):'—')+'</td><td><button class="btn" onclick="closePaper('+p.id+')">Close</button></td></tr>'});
  s.closed.forEach(p=>{real+=p.pnl;cash+=p.pnl;paperClosed.innerHTML+='<tr><td>'+p.ticker+'</td><td>'+p.expiration+' '+money(p.strike)+' '+p.type+'</td><td>'+money(p.entry_price)+'</td><td>'+money(p.exit_price)+'</td><td class="'+(p.pnl>=0?'good':'bad')+'">'+(p.pnl>=0?'+':'')+money(p.pnl)+'</td><td>'+new Date(p.opened_at).toLocaleDateString()+'</td><td>'+new Date(p.closed_at).toLocaleDateString()+'</td></tr>'});
  const openVal=s.open.reduce((a,p)=>{const q=lookupMark(p);return a+(q.mark==null?0:q.mark*100*p.qty)},0),equity=cash+openVal;
  paperEquity.textContent=money(equity);paperUnreal.textContent=(unreal>=0?'+':'')+money(unreal);paperReal.textContent=(real>=0?'+':'')+money(real);paperUnreal.className='value '+(unreal>=0?'good':'bad');paperReal.className='value '+(real>=0?'good':'bad');
- if(!s.open.length)paperOpen.innerHTML='<tr><td colspan="8" class="empty">No open paper positions. Analyze a contract and choose Paper trade.</td></tr>';
+ if(!s.open.length)paperOpen.innerHTML='<tr><td colspan="10" class="empty">No open paper positions. Analyze a contract and choose Paper trade.</td></tr>';
  if(!s.closed.length)paperClosed.innerHTML='<tr><td colspan="7" class="empty">No closed paper positions yet.</td></tr>';
 }
 function closePaper(id){
