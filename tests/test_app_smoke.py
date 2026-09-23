@@ -23,3 +23,16 @@ def test_data_route_is_no_cache(monkeypatch):
     assert r.status_code==200
     assert r.headers['Cache-Control'].startswith('no-store')
     assert r.get_json()['tickers']==[]
+
+
+def test_research_trigger_rejects_invalid_ticker_before_dispatch():
+    client=market_app.app.test_client()
+    r=client.post('/api/run-research',json={'ticker':'$BAD'})
+    assert r.status_code==400
+
+
+def test_research_trigger_requires_server_token(monkeypatch):
+    monkeypatch.delenv('GITHUB_ACTIONS_TOKEN',raising=False)
+    client=market_app.app.test_client()
+    r=client.post('/api/run-research',json={'ticker':'SPY'})
+    assert r.status_code==503
