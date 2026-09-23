@@ -57,3 +57,23 @@ def test_live_quote_rejects_invalid_ticker():
     client=market_app.app.test_client()
     r=client.get('/api/live-quote?ticker=$BAD')
     assert r.status_code==400
+
+
+def test_live_quotes_batch_route(monkeypatch):
+    monkeypatch.setattr(market_app,'live_quotes',lambda tickers:([
+        {'ticker':t,'price':100.0+i,'change_pct':0.001*i,'provider':'test','delayed':True}
+        for i,t in enumerate(tickers)
+    ],[]))
+    client=market_app.app.test_client()
+    r=client.get('/api/live-quotes?tickers=SPY,QQQ')
+    assert r.status_code==200
+    j=r.get_json()
+    assert j['ok'] is True
+    assert [x['ticker'] for x in j['quotes']]==['SPY','QQQ']
+    assert r.headers['Cache-Control'].startswith('no-store')
+
+
+def test_live_quotes_rejects_invalid_list():
+    client=market_app.app.test_client()
+    r=client.get('/api/live-quotes?tickers=SPY,$BAD')
+    assert r.status_code==400
