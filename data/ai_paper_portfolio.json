@@ -1,0 +1,10 @@
+{
+  "starting_cash": 10000,
+  "cash": 10000,
+  "open": [],
+  "closed": [],
+  "equity_history": [],
+  "decisions": [],
+  "updated_at": null,
+  "last_processed_snapshot": null
+}
