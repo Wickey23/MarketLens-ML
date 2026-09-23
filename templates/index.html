@@ -25,6 +25,9 @@ table{width:100%;border-collapse:collapse;font-size:12px;min-width:900px}th,td{t
 .right{text-align:right}.foot{font-size:11px;line-height:1.6;margin:22px 0}.empty{padding:26px;color:var(--m);text-align:center}
 @media(max-width:950px){.grid{grid-template-columns:1fr 1fr}.grid3,.grid2,.main{grid-template-columns:1fr}.statline{grid-template-columns:1fr 1fr}.nav{align-items:flex-start;flex-direction:column;position:static}.hero h1{font-size:34px}}
 @media(max-width:520px){.grid{grid-template-columns:1fr}.w{padding:14px}.statline{grid-template-columns:1fr}}
+
+.guide{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0 18px}.guideStep{background:#0b1119;border:1px solid var(--l);border-radius:13px;padding:13px}.guideStep b{display:block;margin:5px 0;font-size:13px}.stepNo{display:inline-grid;place-items:center;width:23px;height:23px;border-radius:50%;background:#182538;color:#9fc2ff;font-size:11px;font-weight:800}.hint{border-left:3px solid #6d9ee8;background:#0b121c;padding:11px 13px;border-radius:8px;margin:10px 0;color:#aab7c9;font-size:12px;line-height:1.45}.tab small{display:block;font-size:9px;opacity:.65;margin-top:2px}.actionPrimary{box-shadow:0 0 0 2px rgba(139,183,255,.12)}
+@media(max-width:760px){.guide{grid-template-columns:1fr 1fr}.hero h1{font-size:30px;line-height:1.05}.navtabs{overflow:auto;flex-wrap:nowrap}.navtabs .tab{min-width:105px}.grid,.grid3{grid-template-columns:1fr 1fr}.main,.grid2{grid-template-columns:1fr}.chart{height:260px}.w{padding:14px}.search{width:100%}.search .input{flex:1}}
 </style>
 </head>
 <body><main class="w">
@@ -32,14 +35,14 @@ table{width:100%;border-collapse:collapse;font-size:12px;min-width:900px}th,td{t
   <div class="brand">MarketLens <span style="color:#718096">ML</span></div>
   <div class="search">
     <input class="input" id="tickerInput" maxlength="8" placeholder="TSLA, NVDA, AAPL">
-    <button class="btn primary" onclick="analyzeTicker()">Analyze ticker</button>
+    <button class="btn primary actionPrimary" onclick="analyzeTicker()">Analyze ticker</button>
     <button class="btn" id="runBtn" onclick="runResearch()">Refresh current</button>
     <span class="badge" id="runStatus">Ready</span>
     <span class="badge" id="updated">Loading…</span>
   </div>
 </nav>
 
-<section class="hero"><h1>Options research that explains itself.</h1><p>Evidence, events, Greeks, contract economics and paper trading — separated from the decision you make.</p></section>
+<section class="hero"><h1>Research. Practice. Improve.</h1><p>Start with a ticker, understand the evidence, inspect a contract, then practice with paper money.</p></section><section class="guide"><div class="guideStep"><span class="stepNo">1</span><b>Choose a ticker</b><span class="sub">Enter SPY, TSLA, NVDA or another symbol above.</span></div><div class="guideStep"><span class="stepNo">2</span><b>Read the evidence</b><span class="sub">See what history and validation actually support.</span></div><div class="guideStep"><span class="stepNo">3</span><b>Inspect an option</b><span class="sub">Understand premium, breakeven, Greeks and risk.</span></div><div class="guideStep"><span class="stepNo">4</span><b>Practice first</b><span class="sub">Track paper P/L without risking real money.</span></div></section>
 
 <div class="navtabs">
   <button class="tab active" onclick="showView('research',this)">Research</button>
@@ -49,7 +52,7 @@ table{width:100%;border-collapse:collapse;font-size:12px;min-width:900px}th,td{t
 </div>
 <div class="tickerTabs" id="tabs"></div>
 
-<section id="researchView" class="view active">
+<section id="researchView" class="view active"><div class="hint"><b>Start here.</b> A high model percentage is not enough by itself. Check Decision Evidence and the out-of-sample metrics before interpreting the signal.</div>
 <section class="grid">
 <div class="card"><div class="label">LATEST PRICE</div><div class="value" id="price">—</div><div class="sub" id="returns">—</div></div>
 <div class="card"><div class="label">5-DAY UP MODEL OUTPUT</div><div class="value" id="prob">—</div><div class="sub">Model output, not a guaranteed probability</div></div>
@@ -75,7 +78,7 @@ table{width:100%;border-collapse:collapse;font-size:12px;min-width:900px}th,td{t
 <table><thead><tr><th>Model</th><th>Accuracy</th><th>F1</th><th>ROC AUC</th><th>Brier ↓</th><th>N</th></tr></thead><tbody id="metrics"></tbody></table></section>
 </section>
 
-<section id="optionsView" class="view">
+<section id="optionsView" class="view"><div class="hint"><b>Next:</b> filter calls or puts and an expiration, then choose <b>Analyze</b>. The contract panel explains what you pay, the breakeven, Greeks and scenario risk.</div>
 <section class="grid3">
 <div class="card"><div class="label">REALIZED VOL · 20D</div><div class="value" id="optRV">—</div></div>
 <div class="card"><div class="label">NEAREST ATM STRADDLE MOVE</div><div class="value" id="atmMove">—</div><div class="sub" id="atmExp">—</div></div>
@@ -106,7 +109,7 @@ table{width:100%;border-collapse:collapse;font-size:12px;min-width:900px}th,td{t
 </section>
 </section>
 
-<section id="simView" class="view">
+<section id="simView" class="view"><div class="hint"><b>Your practice account.</b> Paper Equity above $10,000 means the account is ahead overall. Unrealized P/L is still open; Realized P/L is from positions you already closed.</div>
 <section class="grid">
 <div class="card"><div class="label">STARTING PAPER CASH</div><div class="value">$10,000</div></div>
 <div class="card"><div class="label">PAPER EQUITY</div><div class="value" id="paperEquity">—</div></div>
@@ -128,7 +131,7 @@ table{width:100%;border-collapse:collapse;font-size:12px;min-width:900px}th,td{t
 <div class="value" id="replayResult" style="font-size:20px">—</div><div class="sub" id="replayText">—</div></section>
 </section>
 
-<section id="aiView" class="view">
+<section id="aiView" class="view"><div class="hint"><b>Autonomous paper testing.</b> This account is separate from your Simulator. It records qualifying setups and why the system acted or stayed in cash. It does not place real brokerage orders.</div>
 <section class="grid"><div class="card"><div class="label">AI PAPER EQUITY</div><div class="value" id="aiEquity">—</div><div class="sub">Started with $10,000 simulated capital</div></div><div class="card"><div class="label">TOTAL P/L</div><div class="value" id="aiPnl">—</div></div><div class="card"><div class="label">WIN RATE</div><div class="value" id="aiWin">—</div><div class="sub" id="aiTrades">—</div></div><div class="card"><div class="label">MAX DRAWDOWN</div><div class="value" id="aiDd">—</div></div></section>
 <section class="grid2" style="margin-top:12px"><div class="box chart"><div class="label">AI PORTFOLIO EQUITY</div><canvas id="aiChart"></canvas></div><div class="box"><div class="label">OPPORTUNITY INBOX</div><div class="sub">Only setups clearing the research thresholds appear here.</div><div id="aiInbox"></div></div></section>
 <section class="box table"><div class="label">OPEN AI PAPER POSITIONS</div><table><thead><tr><th>Ticker</th><th>Contract</th><th>Qty</th><th>Entry</th><th>Mark</th><th>P/L</th><th>Score</th><th>Why</th></tr></thead><tbody id="aiOpen"></tbody></table></section>
