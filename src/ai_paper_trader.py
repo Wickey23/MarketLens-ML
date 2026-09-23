@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from pathlib import Path
 from collections import defaultdict
 import json
@@ -32,15 +32,36 @@ def _expiration_spot(ticker_payload, expiration):
     spot=ticker_payload.get("price")
     return float(spot) if spot is not None else None
 
-def mark_position(pos,tickers):
+def current_contract(pos,tickers):
     t=tickers.get(pos["ticker"])
     if not t:
         return None
     contracts=(((t.get("options") or {}).get("chain") or {}).get("contracts") or [])
-    q=next((x for x in contracts if contract_key(x)==pos["contract_key"]),None)
+    return next((x for x in contracts if contract_key(x)==pos["contract_key"]),None)
+
+def mark_position(pos,tickers):
+    q=current_contract(pos,tickers)
     if q:
         return (q.get("bid") if q.get("bid") and q.get("bid")>0 else q.get("mid"))
     return None
+
+def quote_age_hours(contract, now_dt):
+    raw=contract.get("last_trade")
+    if not raw:
+        return None
+    try:
+        dt=datetime.fromisoformat(str(raw).replace("Z","+00:00"))
+        if dt.tzinfo is None:
+            dt=dt.replace(tzinfo=timezone.utc)
+        return max(0.0,(now_dt-dt.astimezone(timezone.utc)).total_seconds()/3600.0)
+    except Exception:
+        return None
+
+def days_to_expiry(expiration, today):
+    try:
+        return (date.fromisoformat(expiration)-date.fromisoformat(today)).days
+    except Exception:
+        return None
 
 def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.02,min_score=75.0,min_dte=3,max_dte=45,max_spread=.20,max_theta_pct=.03):
     """Rule-based autonomous paper portfolio driven only by MarketLens research.
@@ -49,7 +70,8 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
     research quotes so the strategy can be evaluated prospectively.
     """
     state=state or load_state()
-    now=datetime.now(timezone.utc).isoformat()
+    now_dt=datetime.now(timezone.utc)
+    now=now_dt.isoformat()
     snapshot_id=snapshot.get("generated_at") or snapshot.get("fast_generated_at")
     if snapshot_id and state.get("last_processed_snapshot")==snapshot_id:
         return state
@@ -73,6 +95,13 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
                     pnl_pct=((mark/p["entry_price"])-1) if p["entry_price"]>0 else None
         elif pnl_pct is not None and pnl_pct>=.50: reason="profit_target"
         elif pnl_pct is not None and pnl_pct<=-.35: reason="risk_limit"
+        elif p.get("strategy_version")=="v2_conservative":
+            remaining=days_to_expiry(p["expiration"],today)
+            if remaining is not None and remaining<=1:
+                reason="time_risk"
+            elif pnl_pct is not None and pnl_pct>=.25 and remaining is not None and remaining<=3:
+                reason="profit_protection"
+        p["exit_signal"]=reason or "hold"
         if reason and mark is not None:
             proceeds=mark*100*p["qty"]
             state["cash"]+=proceeds
@@ -102,8 +131,13 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
             iv=q.get("iv")
             prob=r.get("prob_profit")
             ev=r.get("expected_pnl_per_contract")
+            bid=q.get("bid")
+            ask=q.get("ask")
+            age=quote_age_hours(q,now_dt)
             guard_reasons=[]
             if dte is None or int(dte)<min_dte or int(dte)>max_dte: guard_reasons.append("DTE outside autonomous policy")
+            if bid is None or ask is None or float(bid)<=0 or float(ask)<=0 or float(ask)<float(bid): guard_reasons.append("two-sided executable quote unavailable")
+            if age is None or age>96: guard_reasons.append("option quote is stale or timestamp unavailable")
             if spread is not None and float(spread)>max_spread: guard_reasons.append("spread above autonomous policy")
             if theta is not None and float(theta)>max_theta_pct: guard_reasons.append("theta burden above autonomous policy")
             if iv is not None and (float(iv)<.03 or float(iv)>5.0): guard_reasons.append("implausible IV for autonomous entry")
@@ -140,7 +174,7 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
              "entry_spread_pct":q.get("spread_pct"),"entry_theta_cost_pct_per_day":q.get("theta_cost_pct_per_day"),
              "entry_regime":t.get("regime"),"entry_model_auc":(t.get("evidence") or {}).get("mean_roc_auc"),
              "entry_prob_profit":r.get("prob_profit"),"entry_expected_pnl":r.get("expected_pnl_per_contract"),
-             "entry_scope":r.get("historical_scope"),"strategy_version":"v2_conservative","entry_reasons":r.get("reasons") or [],
+             "entry_scope":r.get("historical_scope"),"strategy_version":"v2_conservative","entry_quote_age_hours":quote_age_hours(q,now_dt),"entry_reasons":r.get("reasons") or [],
              "entry_risks":r.get("risks") or [],"entry_research_generated_at":snapshot.get("generated_at")}
         state["open"].append(pos); active_tickers.add(ticker)
         state["decisions"].append({"at":now,"ticker":ticker,"contract":key,"action":"paper_buy",
