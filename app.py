@@ -329,7 +329,11 @@ def home():
 
 @app.get("/api/data")
 def data():
-    return jsonify(read_data())
+    response = jsonify(read_data())
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 @app.get("/api/health")
 def health():
