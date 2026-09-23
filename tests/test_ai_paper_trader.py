@@ -40,3 +40,46 @@ def test_ai_rejects_stale_quote():
     out=run_ai_paper_portfolio(s,state=state)
     assert out["open"]==[]
     assert any("stale" in d.get("reason","") for d in out["decisions"])
+
+
+def test_legacy_same_day_position_exits_on_bid():
+    from datetime import date
+    today=date.today().isoformat()
+    s=snap()
+    q=s["tickers"][0]["options"]["chain"]["contracts"][0]
+    q["expiration"]=today
+    q["dte"]=0
+    q["bid"]=1.20
+    q["ask"]=1.25
+    state={
+        "starting_cash":10000.0,"cash":9900.0,
+        "open":[{
+            "id":"legacy","ticker":"ABC","contract_key":"ABC1","type":"call",
+            "strike":100,"expiration":today,"qty":1,"entry_price":1.0,
+            "entry_cost":100.0,"opened_at":"2026-01-01T00:00:00+00:00"
+        }],
+        "closed":[],"equity_history":[],"decisions":[]
+    }
+    out=run_ai_paper_portfolio(s,state=state)
+    assert out["open"]==[]
+    assert out["closed"][0]["exit_reason"]=="time_risk"
+    assert out["closed"][0]["exit_price"]==1.20
+
+
+def test_ai_does_not_mark_with_mid_when_bid_unavailable():
+    s=snap()
+    q=s["tickers"][0]["options"]["chain"]["contracts"][0]
+    q["bid"]=0
+    q["mid"]=1.50
+    state={
+        "starting_cash":10000.0,"cash":9900.0,
+        "open":[{
+            "id":"legacy","ticker":"ABC","contract_key":"ABC1","type":"call",
+            "strike":100,"expiration":"2099-12-31","qty":1,"entry_price":1.0,
+            "entry_cost":100.0,"opened_at":"2026-01-01T00:00:00+00:00",
+            "last_mark":0.9
+        }],
+        "closed":[],"equity_history":[],"decisions":[]
+    }
+    out=run_ai_paper_portfolio(s,state=state)
+    assert out["open"][0]["last_mark"] is None
