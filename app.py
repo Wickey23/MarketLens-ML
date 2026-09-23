@@ -17,8 +17,6 @@ _TRIGGER_COOLDOWN_SECONDS = 30
 _LIVE_QUOTE_TTL_SECONDS = 10
 _trigger_last_seen = {}
 _live_quote_cache = {}
-_market_stream_session_cache = {"sessionid": None, "at": 0.0}
-_MARKET_STREAM_SESSION_TTL_SECONDS = 240
 
 
 def read_data():
@@ -288,10 +286,6 @@ def _create_tradier_market_session():
     token=os.getenv("TRADIER_ACCESS_TOKEN")
     if not token:
         return None
-    now=time.monotonic()
-    cached=_market_stream_session_cache.get("sessionid")
-    if cached and now-float(_market_stream_session_cache.get("at") or 0)<_MARKET_STREAM_SESSION_TTL_SECONDS:
-        return cached
     req=urllib.request.Request(
         "https://api.tradier.com/v1/markets/events/session",
         data=b"",
@@ -308,8 +302,6 @@ def _create_tradier_market_session():
     sessionid=stream.get("sessionid")
     if not sessionid:
         raise ValueError("Tradier did not return a market streaming session")
-    _market_stream_session_cache["sessionid"]=sessionid
-    _market_stream_session_cache["at"]=now
     return sessionid
 
 
