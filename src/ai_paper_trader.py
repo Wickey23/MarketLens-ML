@@ -174,3 +174,34 @@ def performance_attribution(state):
         "by_iv_environment":_group_stats(closed,iv_band),
         "note":"Attribution uses facts captured at entry. Small samples should not be treated as evidence of a durable edge.",
     }
+
+
+def learning_profile(state,min_trades=20,min_group_trades=8):
+    """Conservative forward-only learning profile.
+
+    It does not rewrite historical scores and it does not optimize thresholds.
+    A factor is only marked positive/negative after enough closed paper trades.
+    """
+    attr=performance_attribution(state)
+    total=len(state.get("closed") or [])
+    profile={"enabled":total>=min_trades,"closed_trades":total,"minimum_closed_trades":min_trades,
+             "minimum_group_trades":min_group_trades,"factors":{}}
+    mapping={"type":"by_type","regime":"by_regime","dte":"by_dte","score":"by_score",
+             "historical_probability":"by_historical_probability","iv_environment":"by_iv_environment"}
+    for factor,key in mapping.items():
+        rows=[]
+        for g in attr.get(key,[]):
+            n=int(g.get("trades") or 0); rp=g.get("return_on_premium"); wr=g.get("win_rate")
+            status="insufficient_sample"
+            weight=1.0
+            if profile["enabled"] and n>=min_group_trades and rp is not None:
+                # Deliberately tiny adjustment: at most +/-10%. This is evidence
+                # annotation, not an optimizer that chases recent winners.
+                if rp>.10 and (wr is None or wr>=.50): status="positive_forward_evidence"; weight=1.10
+                elif rp<-.10: status="negative_forward_evidence"; weight=.90
+                else: status="mixed_forward_evidence"
+            rows.append({"group":g.get("group"),"trades":n,"win_rate":wr,"return_on_premium":rp,
+                         "status":status,"weight_multiplier":weight})
+        profile["factors"][factor]=rows
+    profile["note"]="Learning remains disabled until the minimum forward sample is reached. Eligible adjustments are capped at ±10% and never rewrite prior decisions."
+    return profile
