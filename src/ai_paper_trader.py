@@ -42,7 +42,7 @@ def mark_position(pos,tickers):
         return (q.get("bid") if q.get("bid") and q.get("bid")>0 else q.get("mid"))
     return None
 
-def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.02,min_score=72.0):
+def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.02,min_score=75.0,min_dte=3,max_dte=45,max_spread=.20,max_theta_pct=.03):
     """Rule-based autonomous paper portfolio driven only by MarketLens research.
 
     It never places a brokerage order. Entries/exits are recorded against delayed
@@ -96,6 +96,23 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
             q=cmap.get(key)
             if not q or key in held or (r.get("score") or 0)<min_score:
                 continue
+            dte=q.get("dte")
+            spread=q.get("spread_pct")
+            theta=q.get("theta_cost_pct_per_day")
+            iv=q.get("iv")
+            prob=r.get("prob_profit")
+            ev=r.get("expected_pnl_per_contract")
+            guard_reasons=[]
+            if dte is None or int(dte)<min_dte or int(dte)>max_dte: guard_reasons.append("DTE outside autonomous policy")
+            if spread is not None and float(spread)>max_spread: guard_reasons.append("spread above autonomous policy")
+            if theta is not None and float(theta)>max_theta_pct: guard_reasons.append("theta burden above autonomous policy")
+            if iv is not None and (float(iv)<.03 or float(iv)>5.0): guard_reasons.append("implausible IV for autonomous entry")
+            if prob is None or float(prob)<.58: guard_reasons.append("historical breakeven rate below policy")
+            if ev is None or float(ev)<=0: guard_reasons.append("historical expected payoff is not positive")
+            if guard_reasons:
+                state["decisions"].append({"at":now,"ticker":ticker,"contract":key,"action":"skip","score":r.get("score"),
+                                           "reason":"; ".join(guard_reasons),"strategy_version":"v2_conservative"})
+                continue
             candidates.append((float(r["score"]),ticker,r,q))
     candidates.sort(reverse=True,key=lambda z:z[0])
 
@@ -123,11 +140,11 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
              "entry_spread_pct":q.get("spread_pct"),"entry_theta_cost_pct_per_day":q.get("theta_cost_pct_per_day"),
              "entry_regime":t.get("regime"),"entry_model_auc":(t.get("evidence") or {}).get("mean_roc_auc"),
              "entry_prob_profit":r.get("prob_profit"),"entry_expected_pnl":r.get("expected_pnl_per_contract"),
-             "entry_scope":r.get("historical_scope"),"entry_reasons":r.get("reasons") or [],
+             "entry_scope":r.get("historical_scope"),"strategy_version":"v2_conservative","entry_reasons":r.get("reasons") or [],
              "entry_risks":r.get("risks") or [],"entry_research_generated_at":snapshot.get("generated_at")}
         state["open"].append(pos); active_tickers.add(ticker)
         state["decisions"].append({"at":now,"ticker":ticker,"contract":key,"action":"paper_buy",
-                                   "qty":qty,"price":entry,"score":score})
+                                   "qty":qty,"price":entry,"score":score,"strategy_version":"v2_conservative"})
 
     open_value=sum((mark_position(p,tickers) or p["entry_price"])*100*p["qty"] for p in state["open"])
     equity=state["cash"]+open_value
