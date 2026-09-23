@@ -150,7 +150,7 @@ body{background:radial-gradient(circle at 50% -20%,#10203a 0,transparent 38%),va
 </main>
 
 <script>
-let P,C,ch,selectedContract,aiCh;
+let P,C,ch,selectedContract,aiCh,pendingReview=null;
 const pc=x=>x==null?'—':(Number(x)*100).toFixed(1)+'%';
 const money=x=>x==null?'—':'$'+Number(x).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
 const num=(x,d=2)=>x==null?'—':Number(x).toFixed(d);
@@ -159,7 +159,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&
 function showView(v,b){
   document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
   document.querySelectorAll('.navtabs .tab').forEach(x=>x.classList.remove('active'));
-  document.getElementById(v+'View').classList.add('active'); b.classList.add('active');
+  document.getElementById(v+'View').classList.add('active'); if(b)b.classList.add('active');
   if(v==='sim')renderPaper();
   if(v==='ai')renderAI();
 }
@@ -297,9 +297,49 @@ function scenario(){
 function paperState(){try{const s=JSON.parse(localStorage.getItem('marketlens_paper_v1'))||{};return{open:s.open||[],closed:s.closed||[],pending:s.pending||[],equityHistory:s.equityHistory||[]}}catch(e){return{open:[],closed:[],pending:[],equityHistory:[]}}}
 function toggleLimit(){paperLimit.style.display=paperOrderType.value==='limit'?'block':'none';if(paperOrderType.value==='limit'&&selectedContract)paperLimit.value=num(selectedContract.mid,2)}
 function savePaper(s){localStorage.setItem('marketlens_paper_v1',JSON.stringify(s))}
+function paperBuyingPower(s){
+ let cash=10000;
+ (s.open||[]).forEach(p=>cash-=Number(p.entry_price||0)*100*Number(p.qty||1));
+ (s.closed||[]).forEach(p=>cash+=Number(p.pnl||0));
+ return cash;
+}
 function paperTrade(){
- if(!selectedContract)return;const x=selectedContract,s=paperState(),entry=(x.ask&&x.ask>0)?x.ask:x.mid;if(!entry){runStatus.textContent='No usable entry quote';return}
- s.open.push({id:Date.now(),ticker:C.ticker,type:x.type,strike:x.strike,expiration:x.expiration,contract_symbol:x.contract_symbol||'',qty:1,entry_price:entry,entry_spot:C.price,entry_iv:x.iv,entry_delta:x.delta,entry_theta:x.theta_per_contract_per_day,entry_vega:x.vega_per_contract_per_vol_point,entry_spread_pct:x.spread_pct,entry_model_output:C.probability_5d_up,entry_evidence:(C.evidence||{}).state||null,opened_at:new Date().toISOString()});savePaper(s);runStatus.textContent='Paper trade added';renderPaper();
+ if(!selectedContract||!C)return;
+ const x=selectedContract,s=paperState(),qty=Math.max(1,Number(paperQty.value||1)),orderType=paperOrderType.value;
+ const market=(x.ask&&x.ask>0)?Number(x.ask):Number(x.mid||0);
+ const limit=orderType==='limit'?Number(paperLimit.value||0):null;
+ const price=orderType==='limit'?limit:market;
+ if(!price||price<=0){runStatus.textContent='Enter a usable order price';return}
+ const maxCost=price*100*qty,buying=paperBuyingPower(s);
+ if(maxCost>buying){runStatus.textContent='Paper order exceeds buying power';return}
+ pendingReview={id:Date.now(),ticker:C.ticker,type:x.type,strike:x.strike,expiration:x.expiration,contract_symbol:x.contract_symbol||'',qty,
+  entry_spot:C.price,entry_iv:x.iv,entry_delta:x.delta,entry_theta:x.theta_per_contract_per_day,entry_vega:x.vega_per_contract_per_vol_point,
+  entry_spread_pct:x.spread_pct,entry_model_output:C.probability_5d_up,entry_evidence:(C.evidence||{}).state||null,order_type:orderType,
+  requested_price:price};
+ orderTicket.style.display='block';
+ orderTicket.innerHTML='<div class="label">REVIEW PAPER ORDER</div><div class="kv"><span>Contract</span><b>'+esc(C.ticker+' '+x.expiration+' '+x.strike+' '+String(x.type).toUpperCase())+'</b></div><div class="kv"><span>Quantity</span><b>'+qty+'</b></div><div class="kv"><span>Order</span><b>'+esc(orderType==='limit'?'Limit @ '+money(limit):'Market @ quoted ask')+'</b></div><div class="kv"><span>Estimated maximum debit</span><b>'+money(maxCost)+'</b></div><div class="kv"><span>Buying power after fill</span><b>'+money(buying-maxCost)+'</b></div><div style="margin-top:12px;display:flex;gap:8px"><button class="btn primary" onclick="submitPaperOrder()">Submit paper order</button><button class="btn" onclick="orderTicket.style.display=\'none\';pendingReview=null">Cancel</button></div>';
+}
+function submitPaperOrder(){
+ if(!pendingReview)return;
+ const s=paperState(),o=pendingReview,q=lookupContract(o),buying=paperBuyingPower(s);
+ if(o.order_type==='limit'){
+   const ask=q&&q.ask!=null?Number(q.ask):null;
+   if(ask!=null&&ask<=o.requested_price){
+     const fill=Math.min(ask,o.requested_price),cost=fill*100*o.qty;
+     if(cost>buying){runStatus.textContent='Paper order exceeds buying power';return}
+     const {requested_price,order_type,...p}=o;s.open.push({...p,entry_price:fill,opened_at:new Date().toISOString()});
+     runStatus.textContent='Limit paper order filled';
+   }else{
+     s.pending.push({...o,limit_price:o.requested_price,created_at:new Date().toISOString(),status:'pending'});
+     runStatus.textContent='Limit paper order pending';
+   }
+ }else{
+   const fill=q&&q.ask&&q.ask>0?Number(q.ask):Number(q&&q.mid||o.requested_price),cost=fill*100*o.qty;
+   if(!fill||cost>buying){runStatus.textContent='No usable fill or insufficient buying power';return}
+   const {requested_price,order_type,...p}=o;s.open.push({...p,entry_price:fill,opened_at:new Date().toISOString()});
+   runStatus.textContent='Market paper order filled';
+ }
+ pendingReview=null;orderTicket.style.display='none';savePaper(s);renderPaper();
 }
 function processPending(s){
  s.pending.forEach(o=>{const q=lookupContract(o);if(q&&q.ask!=null&&q.ask<=o.limit_price)o._fill=Math.min(q.ask,o.limit_price)});
@@ -308,11 +348,17 @@ function processPending(s){
 }
 function lookupContract(p){const t=(P.tickers||[]).find(x=>x.ticker===p.ticker);if(!t)return null;return (((t.options||{}).chain||{}).contracts||[]).find(z=>(p.contract_symbol&&z.contract_symbol===p.contract_symbol)||(!p.contract_symbol&&z.type===p.type&&z.strike===p.strike&&z.expiration===p.expiration))||null}
 function cancelPending(id){const s=paperState();s.pending=s.pending.filter(x=>x.id!==id);savePaper(s);renderPaper()}
+function historicalSpotOnOrBefore(t,date){
+ const rows=(t&&t.history)||[];let best=null;
+ rows.forEach(r=>{if(r.date<=date&&r.close!=null&&(!best||r.date>best.date))best=r});
+ return best?Number(best.close):null;
+}
 function lookupMark(p){
  const t=(P.tickers||[]).find(x=>x.ticker===p.ticker);if(!t)return{mark:null,spot:null};
  const rows=((((t.options||{}).chain||{}).contracts)||[]);const x=rows.find(z=>(p.contract_symbol&&z.contract_symbol===p.contract_symbol)||(!p.contract_symbol&&z.type===p.type&&z.strike===p.strike&&z.expiration===p.expiration));
  if(x)return{mark:(x.bid&&x.bid>0)?x.bid:x.mid,spot:t.price};
- const expired=new Date(p.expiration+'T23:59:59Z')<new Date();if(expired&&t.price!=null){const intrinsic=Math.max(p.type==='call'?t.price-p.strike:p.strike-t.price,0);return{mark:intrinsic,spot:t.price}}
+ const expired=new Date(p.expiration+'T23:59:59Z')<new Date();
+ if(expired){const expirySpot=historicalSpotOnOrBefore(t,p.expiration);if(expirySpot!=null){const intrinsic=Math.max(p.type==='call'?expirySpot-p.strike:p.strike-expirySpot,0);return{mark:intrinsic,spot:expirySpot,settled:true}}}
  return{mark:null,spot:t.price};
 }
 function renderPaper(){
