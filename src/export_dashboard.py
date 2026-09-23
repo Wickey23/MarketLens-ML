@@ -71,6 +71,36 @@ def relative_strength(raw,ticker):
         return {"vs_spy_20d":None,"vs_spy_60d":None}
 
 
+def enrich_earnings_history(ctx, raw):
+    earnings=(ctx.get("earnings") or {})
+    close=raw["Close"]
+    moves=[]
+    for row in earnings.get("recent_and_upcoming") or []:
+        ds=row.get("date")
+        if not ds:
+            continue
+        try:
+            d=np.datetime64(str(ds)[:10])
+            idx=np.where(close.index.normalize().values.astype("datetime64[D]")>=d)[0]
+            if not len(idx):
+                continue
+            i=int(idx[0])
+            if i<1 or i>=len(close):
+                continue
+            before=float(close.iloc[i-1])
+            after=float(close.iloc[i])
+            move=(after/before)-1
+            moves.append({"date":str(close.index[i].date()),"move_1d":sf(move),"abs_move_1d":sf(abs(move))})
+        except Exception:
+            continue
+    if moves:
+        earnings["historical_moves"]=moves[:8]
+        earnings["avg_abs_1d_move"]=sf(np.mean([x["abs_move_1d"] for x in moves if x["abs_move_1d"] is not None]))
+        earnings["median_abs_1d_move"]=sf(np.median([x["abs_move_1d"] for x in moves if x["abs_move_1d"] is not None]))
+    ctx["earnings"]=earnings
+    return ctx
+
+
 def options_summary(chain,spot):
     contracts=chain.get("contracts") or []
     expiries=chain.get("expirations") or []
@@ -125,6 +155,10 @@ def plain_language(ticker,evidence,ctx,options,rel):
 
     if (ctx.get("catalyst_flags") or []):
         notes.append("Recent headlines contain potential catalyst themes: "+", ".join(ctx["catalyst_flags"])+". Review the underlying headlines rather than treating this as a sentiment score.")
+
+    hist_move=(ctx.get("earnings") or {}).get("avg_abs_1d_move")
+    if hist_move is not None:
+        notes.append(f"Recent earnings dates in the available history produced an average absolute next-session move of about {hist_move*100:.1f}%.")
 
     if options.get("summary",{}).get("atm_straddle_implied_move") is not None:
         mv=options["summary"]["atm_straddle_implied_move"]*100
@@ -258,7 +292,7 @@ def analyze(ticker):
         options["summary"]={}
 
     try:
-        ctx=company_context(ticker)
+        ctx=enrich_earnings_history(company_context(ticker), raw)
     except Exception:
         ctx={"news":[],"earnings":{},"catalyst_flags":[],"news_note":"Company context unavailable for this run."}
 
