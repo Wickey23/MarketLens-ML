@@ -14,7 +14,16 @@ jobs:
       - run: pip install -r requirements-ml.txt
       - run: pip install pytest
       - name: Compile Python sources
-        run: python -m compileall -q src app.py
+        run: python -m compileall -q src app.py index.py
+      - name: Check inline JavaScript syntax
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          html=Path('templates/index.html').read_text(encoding='utf-8')
+          js=html.rsplit('<script>',1)[1].split('</script>',1)[0]
+          Path('/tmp/marketlens.js').write_text(js,encoding='utf-8')
+          PY
+          node --check /tmp/marketlens.js
       - name: Run tests
         env:
           PYTHONPATH: ${{ github.workspace }}
