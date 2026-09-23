@@ -149,10 +149,14 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
         radar=((t.get("options") or {}).get("opportunity_radar") or {})
         chain=(((t.get("options") or {}).get("chain") or {}).get("contracts") or [])
         cmap={contract_key(x):x for x in chain}
-        for r in radar.get("opportunities") or []:
+        guidance=(radar.get("guidance") or {})
+        guided=guidance.get("best_overall") if guidance.get("state")=="strong_candidates" else None
+        candidate_rows=[guided] if guided else (radar.get("opportunities") or [])
+        for r in candidate_rows:
             key=contract_key(r)
             q=cmap.get(key)
-            if not q or key in held or (r.get("score") or 0)<min_score:
+            candidate_score=float(r.get("combined_evidence_score") or r.get("score") or 0)
+            if not q or key in held or candidate_score<min_score:
                 continue
             dte=q.get("dte")
             spread=q.get("spread_pct")
@@ -176,7 +180,7 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
                 state["decisions"].append({"at":now,"ticker":ticker,"contract":key,"action":"skip","score":r.get("score"),
                                            "reason":"; ".join(guard_reasons),"strategy_version":"v2_conservative"})
                 continue
-            candidates.append((float(r["score"]),ticker,r,q))
+            candidates.append((candidate_score,ticker,r,q))
     candidates.sort(reverse=True,key=lambda z:z[0])
 
     # Fixed fractional premium-at-risk sizing, capped at one new contract group per ticker.
@@ -198,7 +202,7 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
         state["cash"]-=cost
         pos={"id":f"{now}:{key}","ticker":ticker,"contract_key":key,"type":q["type"],
              "strike":q["strike"],"expiration":q["expiration"],"qty":qty,
-             "entry_price":entry,"entry_cost":cost,"opened_at":now,"entry_score":score,
+             "entry_price":entry,"entry_cost":cost,"opened_at":now,"entry_score":score,"entry_combined_evidence_score":r.get("combined_evidence_score"),
              "entry_dte":q.get("dte"),"entry_iv":q.get("iv"),"entry_iv_rv_ratio":q.get("iv_rv_ratio"),
              "entry_spread_pct":q.get("spread_pct"),"entry_theta_cost_pct_per_day":q.get("theta_cost_pct_per_day"),
              "entry_regime":t.get("regime"),"entry_model_auc":(t.get("evidence") or {}).get("mean_roc_auc"),
