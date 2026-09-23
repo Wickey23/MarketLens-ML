@@ -15,6 +15,8 @@ from src.data_loader import download_prices
 from src.features import add_target, build_features
 from src.options_data import option_snapshot
 from src.regime import classify_regime
+from src.opportunity_radar import build_opportunity_radar
+from src.ai_paper_trader import load_state, save_state, run_ai_paper_portfolio, performance_summary, performance_attribution
 from src.train import FEATURES
 from src.walk_forward import expanding_predictions, model_library
 
@@ -297,6 +299,9 @@ def analyze(ticker):
         ctx={"news":[],"earnings":{},"catalyst_flags":[],"news_note":"Company context unavailable for this run."}
 
     rel=relative_strength(raw,ticker)
+    regime_series=classify_regime(raw)
+    current_regime=str(regime_series.iloc[-1])
+    options["opportunity_radar"]=build_opportunity_radar(raw,(options.get("chain") or {}).get("contracts") or [],regime_series,current_regime,evidence,float(close.iloc[-1]))
     explanation=plain_language(ticker,evidence,ctx,options,rel)
 
     return {
@@ -354,6 +359,9 @@ def main():
     p["tickers"]=list(by_ticker.values())
     p["generated_at"]=datetime.now(timezone.utc).isoformat()
     p["horizon_days"]=HORIZON
+    ai_state=run_ai_paper_portfolio(p,load_state())
+    save_state(ai_state)
+    p["ai_portfolio"]={"summary":performance_summary(ai_state),"attribution":performance_attribution(ai_state),"updated_at":ai_state.get("updated_at"),"open":ai_state.get("open",[]),"closed":ai_state.get("closed",[])[-100:],"decisions":ai_state.get("decisions",[])[-100:],"equity_history":ai_state.get("equity_history",[])[-300:]}
     DATA_PATH.parent.mkdir(exist_ok=True)
     DATA_PATH.write_text(json.dumps(p,indent=2),encoding="utf-8")
     print(json.dumps({"tickers":[x["ticker"] for x in p["tickers"]],"errors":p["errors"]},indent=2))
