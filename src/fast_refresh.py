@@ -113,6 +113,7 @@ def merge(old,new,learning=None):
 
 
 def main():
+    current_learning=learning_profile(load_state())
     requested=(os.getenv("MARKETLENS_TICKER") or "").strip().upper()
     tickers=[requested] if requested else DEFAULT_TICKERS
     p=load_existing()
