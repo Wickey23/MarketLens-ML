@@ -13,6 +13,7 @@ from src.options_data import option_snapshot
 from src.regime import classify_regime
 from src.opportunity_radar import build_opportunity_radar
 from src.ai_paper_trader import load_state, save_state, run_ai_paper_portfolio, performance_summary, performance_attribution, learning_profile
+from src.universe_scanner import choose_research_universe
 
 DATA_PATH=Path("data/dashboard.json")
 DEFAULT_TICKERS=["SPY","VOO","QQQ","VXUS"]
@@ -118,7 +119,20 @@ def main():
     requested=(os.getenv("MARKETLENS_TICKER") or "").strip().upper()
     p=load_existing()
     tracked=[x.get("ticker") for x in p.get("tickers",[]) if x.get("ticker")]
-    tickers=[requested] if requested else list(dict.fromkeys(DEFAULT_TICKERS+tracked))[:12]
+    prior_scan=set(((p.get("universe_scan") or {}).get("selected") or []))
+    manual=list(dict.fromkeys(p.get("manual_tickers") or [
+        t for t in tracked if t not in DEFAULT_TICKERS and t not in prior_scan
+    ]))
+    if requested and requested not in DEFAULT_TICKERS and requested not in manual:
+        manual.append(requested)
+    p["manual_tickers"]=manual[:8]
+    if requested:
+        tickers=[requested]
+    else:
+        scan=choose_research_universe(DEFAULT_TICKERS,p["manual_tickers"],max_total=12)
+        p["universe_scan"]=scan
+        tickers=scan["selected"]
+
     by={x.get("ticker"):x for x in p.get("tickers",[]) if x.get("ticker")}
     errors=[]
     for t in tickers:
@@ -126,7 +140,10 @@ def main():
             by[t]=merge(by.get(t,{}),quick_snapshot(t),current_learning)
         except Exception as e:
             errors.append({"ticker":t,"error":str(e)})
-    p["tickers"]=list(by.values())
+    if requested:
+        p["tickers"]=list(by.values())
+    else:
+        p["tickers"]=[by[t] for t in tickers if t in by]
     p["generated_at"]=datetime.now(timezone.utc).isoformat()
     p["fast_generated_at"]=p["generated_at"]
     p["errors"]=errors
@@ -135,7 +152,7 @@ def main():
     p["ai_portfolio"]={"summary":performance_summary(ai_state),"attribution":performance_attribution(ai_state),"learning":learning_profile(ai_state),"updated_at":ai_state.get("updated_at"),"open":ai_state.get("open",[]),"closed":ai_state.get("closed",[])[-100:],"decisions":ai_state.get("decisions",[])[-100:],"equity_history":ai_state.get("equity_history",[])[-300:]}
     DATA_PATH.parent.mkdir(exist_ok=True)
     DATA_PATH.write_text(json.dumps(p,indent=2),encoding="utf-8")
-    print(json.dumps({"refreshed":tickers,"errors":errors,"ai_portfolio":p["ai_portfolio"]["summary"]},indent=2))
+    print(json.dumps({"refreshed":tickers,"universe_scan":p.get("universe_scan"),"errors":errors,"ai_portfolio":p["ai_portfolio"]["summary"]},indent=2))
 
 
 if __name__=="__main__":
