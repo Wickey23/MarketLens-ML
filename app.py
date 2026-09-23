@@ -312,7 +312,7 @@ def read_data():
         )
         with urllib.request.urlopen(req, timeout=8) as response:
             payload = json.loads(response.read().decode("utf-8"))
-            payload["_data_source"] = "github-main-live"
+            payload["_data_source"] = "github-main-live-v2"
             return payload
     except Exception as exc:
         # Keep the bundled snapshot only as an outage fallback.
