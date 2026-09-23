@@ -20,7 +20,7 @@ def read_data():
     # dashboard.json changes much more often than the application deployment.
     # Read the current main-branch snapshot directly so Vercel never serves
     # the copy that happened to be bundled at build time.
-    url = "https://raw.githubusercontent.com/Wickey23/MarketLens-ML/main/data/dashboard.json"
+    url = "https://raw.githubusercontent.com/Wickey23/MarketLens-ML/market-data/data/dashboard.json"
     try:
         req = urllib.request.Request(
             url,
