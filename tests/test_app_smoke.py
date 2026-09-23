@@ -91,3 +91,32 @@ def test_live_quote_prefers_provider_when_key_present(monkeypatch):
     assert q["price"]==200.0
     assert q["provider"]=="Finnhub quote"
     assert q["realtime"] is True
+
+
+def test_market_stream_status_without_token(monkeypatch):
+    monkeypatch.delenv("TRADIER_ACCESS_TOKEN",raising=False)
+    client=market_app.app.test_client()
+    r=client.get("/api/market-stream/status")
+    assert r.status_code==200
+    j=r.get_json()
+    assert j["configured"] is False
+    assert j["mode"]=="near-live-polling"
+
+
+def test_market_stream_session_requires_token(monkeypatch):
+    monkeypatch.delenv("TRADIER_ACCESS_TOKEN",raising=False)
+    client=market_app.app.test_client()
+    r=client.post("/api/market-stream/session")
+    assert r.status_code==503
+
+
+def test_market_stream_session_returns_browser_safe_session(monkeypatch):
+    monkeypatch.setenv("TRADIER_ACCESS_TOKEN","secret")
+    monkeypatch.setattr(market_app,"_create_tradier_market_session",lambda:"session-123")
+    client=market_app.app.test_client()
+    r=client.post("/api/market-stream/session")
+    assert r.status_code==200
+    j=r.get_json()
+    assert j["ok"] is True
+    assert j["sessionid"]=="session-123"
+    assert "TRADIER_ACCESS_TOKEN" not in r.get_data(as_text=True)
