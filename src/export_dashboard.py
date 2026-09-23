@@ -16,7 +16,7 @@ from src.features import add_target, build_features
 from src.options_data import option_snapshot
 from src.regime import classify_regime
 from src.opportunity_radar import build_opportunity_radar
-from src.ai_paper_trader import load_state, save_state, run_ai_paper_portfolio, performance_summary, performance_attribution
+from src.ai_paper_trader import load_state, save_state, run_ai_paper_portfolio, performance_summary, performance_attribution, learning_profile
 from src.train import FEATURES
 from src.walk_forward import expanding_predictions, model_library
 
@@ -361,7 +361,7 @@ def main():
     p["horizon_days"]=HORIZON
     ai_state=run_ai_paper_portfolio(p,load_state())
     save_state(ai_state)
-    p["ai_portfolio"]={"summary":performance_summary(ai_state),"attribution":performance_attribution(ai_state),"updated_at":ai_state.get("updated_at"),"open":ai_state.get("open",[]),"closed":ai_state.get("closed",[])[-100:],"decisions":ai_state.get("decisions",[])[-100:],"equity_history":ai_state.get("equity_history",[])[-300:]}
+    p["ai_portfolio"]={"summary":performance_summary(ai_state),"attribution":performance_attribution(ai_state),"learning":learning_profile(ai_state),"updated_at":ai_state.get("updated_at"),"open":ai_state.get("open",[]),"closed":ai_state.get("closed",[])[-100:],"decisions":ai_state.get("decisions",[])[-100:],"equity_history":ai_state.get("equity_history",[])[-300:]}
     DATA_PATH.parent.mkdir(exist_ok=True)
     DATA_PATH.write_text(json.dumps(p,indent=2),encoding="utf-8")
     print(json.dumps({"tickers":[x["ticker"] for x in p["tickers"]],"errors":p["errors"]},indent=2))
