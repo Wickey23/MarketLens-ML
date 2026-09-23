@@ -23,6 +23,15 @@ def save_state(state,path=STATE_PATH):
 def contract_key(x):
     return x.get("contract_symbol") or f'{x.get("ticker","")}:{x.get("expiration")}:{x.get("strike")}:{x.get("type")}'
 
+def _expiration_spot(ticker_payload, expiration):
+    rows=ticker_payload.get("history") or []
+    eligible=[x for x in rows if x.get("date") and x.get("date")<=expiration and x.get("close") is not None]
+    if eligible:
+        row=max(eligible,key=lambda x:x["date"])
+        return float(row["close"])
+    spot=ticker_payload.get("price")
+    return float(spot) if spot is not None else None
+
 def mark_position(pos,tickers):
     t=tickers.get(pos["ticker"])
     if not t:
@@ -53,11 +62,11 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
         pnl_pct=((mark/p["entry_price"])-1) if mark is not None and p["entry_price"]>0 else None
         today=now[:10]
         reason=None
-        if p["expiration"]<=today:
+        if p["expiration"]<today:
             reason="expiration"
             if mark is None:
                 t=tickers.get(p["ticker"]) or {}
-                spot=t.get("price")
+                spot=_expiration_spot(t,p["expiration"])
                 if spot is not None:
                     intrinsic=max(0.0,float(spot)-float(p["strike"])) if p["type"]=="call" else max(0.0,float(p["strike"])-float(spot))
                     mark=intrinsic
@@ -132,14 +141,15 @@ def performance_summary(state):
     closed=state.get("closed") or []
     wins=[p for p in closed if (p.get("pnl") or 0)>0]
     losses=[p for p in closed if (p.get("pnl") or 0)<0]
-    pnl=sum(p.get("pnl") or 0 for p in closed)
+    realized_pnl=sum(p.get("pnl") or 0 for p in closed)
     hist=state.get("equity_history") or []
     equity=hist[-1]["equity"] if hist else state.get("cash",STARTING_CASH)
+    pnl=equity-float(state.get("starting_cash",STARTING_CASH))
     peak=STARTING_CASH; max_dd=0.0
     for x in hist:
         peak=max(peak,x["equity"])
         if peak: max_dd=min(max_dd,x["equity"]/peak-1)
-    return {"equity":equity,"total_pnl":pnl,"return":equity/STARTING_CASH-1,
+    return {"equity":equity,"total_pnl":pnl,"realized_pnl":realized_pnl,"return":equity/STARTING_CASH-1,
             "closed_trades":len(closed),"win_rate":len(wins)/len(closed) if closed else None,
             "avg_win":sum(p["pnl"] for p in wins)/len(wins) if wins else None,
             "avg_loss":sum(p["pnl"] for p in losses)/len(losses) if losses else None,
