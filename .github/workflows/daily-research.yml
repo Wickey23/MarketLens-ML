@@ -1,6 +1,11 @@
 name: daily-market-research
 on:
   workflow_dispatch:
+    inputs:
+      ticker:
+        description: "Optional ticker to analyze and merge into dashboard data"
+        required: false
+        type: string
   push:
     branches: [main]
     paths:
@@ -12,14 +17,19 @@ on:
     - cron: "30 17 * * 1-5"
     - cron: "15 20 * * 1-5"
     - cron: "30 22 * * 1-5"
+
 permissions:
   contents: write
+
 concurrency:
   group: marketlens-research
   cancel-in-progress: false
+
 jobs:
   research:
     runs-on: ubuntu-latest
+    env:
+      MARKETLENS_TICKER: ${{ github.event.inputs.ticker }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
