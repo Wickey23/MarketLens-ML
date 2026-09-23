@@ -42,7 +42,18 @@ The AI portfolio is paper-only. New autonomous positions require Opportunity Rad
 
 Existing trades retain the facts captured at entry so later strategy changes do not rewrite their history.
 
-## Data caveats
+## Live quote overlay
+
+The web app now has a separate underlying-quote path from the heavier research snapshots:
+
+- If `FINNHUB_API_KEY` is configured on Vercel, MarketLens uses the provider-backed quote endpoint first.
+- Without that secret, the app falls back to Yahoo Finance's 1-minute chart feed.
+- Underlying quotes are cached server-side for roughly 10 seconds and the open browser polls the active ticker every 15 seconds.
+- Option chains, Greeks, Opportunity Radar, and model evidence remain snapshot-based and refresh through GitHub Actions every 30 minutes during the configured weekday market window.
+- The browser checks for a new research/options snapshot every two minutes and reloads it without requiring a Vercel redeploy.
+
+The active quote provider is exposed by `/api/health`. Exact exchange entitlements depend on the configured provider account.
+
 
 Option-chain and company context are retrieved through Yahoo Finance/yfinance and may be delayed, stale, incomplete, or inconsistent. Greeks are Black-Scholes estimates. Historical contract replay applies today's strike and premium economics to historical underlying moves; it is not historical option-chain reconstruction.
 
