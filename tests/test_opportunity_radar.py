@@ -70,3 +70,32 @@ def test_guidance_returns_explicit_no_trade_state():
     ],{"mean_roc_auc":0.60})
     assert g["state"]=="no_strong_contract"
     assert g["best_overall"] is None
+
+
+def test_guidance_uses_validated_direction_and_context():
+    base={
+        "state":"investigate","score":78.0,"entry_quote":2.0,
+        "prob_profit":0.63,"prob_profit_ci95":[0.58,0.68],
+        "prob_total_premium_loss":0.20,"expected_return_on_debit":0.25,
+        "median_return_on_debit":0.10,"p10_pnl_per_contract":-90.0,
+        "dte":21,"risks":[],"reasons":[],
+    }
+    rows=[
+        {**base,"contract_symbol":"CALL","type":"call"},
+        {**base,"contract_symbol":"PUT","type":"put"},
+    ]
+    g=_guidance_payload(
+        rows,
+        {"mean_roc_auc":0.58,"historical_lift_ci95":[0.02,0.08]},
+        current_regime="Uptrend / Normal Vol",
+        context={"earnings":{"days_to_earnings":10},"catalyst_flags":["earnings"]},
+        relative_strength={"vs_spy_20d":0.05},
+        model_probability=0.64,
+    )
+    call=next(x for x in (g["best_overall"],g["highest_upside"],g["higher_probability"]) if x and x["contract_symbol"]=="CALL")
+    put=[x for x in [g["best_overall"],g["highest_upside"],g["higher_probability"]] if x and x["contract_symbol"]=="PUT"]
+    assert call["combined_evidence_score"] > 78.0
+    assert call["all_data_components"]["directional_alignment_points"] > 0
+    assert call["all_data_components"]["context_alignment_points"] > 0
+    assert call["all_data_components"]["event_risk_points"] < 0
+    assert any("Earnings falls inside" in x for x in call["risks"])
