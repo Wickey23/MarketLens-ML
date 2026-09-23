@@ -73,6 +73,44 @@ def _snapshot_quote(ticker):
     }
 
 
+def _finnhub_live_quote(ticker, api_key):
+    """Optional provider-backed quote path for lower-latency production data."""
+    query=urllib.parse.urlencode({"symbol":ticker,"token":api_key})
+    url=f"https://finnhub.io/api/v1/quote?{query}"
+    req=urllib.request.Request(
+        url,
+        headers={"User-Agent":"MarketLens-ML/1.0","Accept":"application/json"},
+    )
+    with urllib.request.urlopen(req,timeout=5) as response:
+        body=json.loads(response.read().decode("utf-8"))
+    price=body.get("c")
+    prev=body.get("pc")
+    if price in (None,0):
+        raise ValueError("Provider quote unavailable")
+    ts=body.get("t")
+    change=body.get("d")
+    change_pct=(float(body["dp"])/100.0) if body.get("dp") is not None else (
+        (float(price)/float(prev)-1.0) if prev not in (None,0) else None
+    )
+    return {
+        "ticker":ticker,
+        "price":float(price),
+        "previous_close":float(prev) if prev is not None else None,
+        "open":float(body["o"]) if body.get("o") is not None else None,
+        "high":float(body["h"]) if body.get("h") is not None else None,
+        "low":float(body["l"]) if body.get("l") is not None else None,
+        "change":float(change) if change is not None else None,
+        "change_pct":change_pct,
+        "market_timestamp":datetime.fromtimestamp(int(ts),timezone.utc).isoformat() if ts else None,
+        "exchange":None,
+        "currency":"USD",
+        "provider":"Finnhub quote",
+        "realtime":True,
+        "delayed":False,
+        "note":"Provider-backed quote path. Actual exchange entitlements depend on the configured provider account.",
+    }
+
+
 def _yahoo_live_quote(ticker):
     """Best-effort near-live underlying quote without an extra server dependency."""
     symbol = urllib.parse.quote(ticker, safe="")
@@ -144,10 +182,19 @@ def live_quote(ticker):
     if cached and now - cached["at"] < _LIVE_QUOTE_TTL_SECONDS:
         return cached["payload"]
 
-    try:
-        out = _yahoo_live_quote(ticker)
-    except Exception:
-        out = _snapshot_quote(ticker)
+    provider_key=os.getenv("FINNHUB_API_KEY")
+    if provider_key:
+        try:
+            out=_finnhub_live_quote(ticker,provider_key)
+        except Exception:
+            out=None
+    else:
+        out=None
+    if out is None:
+        try:
+            out=_yahoo_live_quote(ticker)
+        except Exception:
+            out=_snapshot_quote(ticker)
 
     if out is not None:
         out["served_at"] = datetime.now(timezone.utc).isoformat()
