@@ -1,6 +1,7 @@
 from __future__ import annotations
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 import math
+from zoneinfo import ZoneInfo
 from statistics import NormalDist
 import yfinance as yf
 
@@ -11,6 +12,14 @@ def _f(x):
         return v if math.isfinite(v) else None
     except Exception:
         return None
+
+
+def _i(x, default=0):
+    try:
+        v=float(x)
+        return int(v) if math.isfinite(v) else default
+    except Exception:
+        return default
 
 
 def _cdf(z):
@@ -139,11 +148,12 @@ def option_snapshot(ticker:str, spot:float, annual_rv:float|None=None, max_expir
     expiries=list(t.options)[:max_expiries]
     rows=[]
     now=datetime.now(timezone.utc)
+    market_today=datetime.now(ZoneInfo("America/New_York")).date()
     risk_free,risk_free_source=_risk_free_rate()
     for exp in expiries:
         try:
             chain=t.option_chain(exp)
-            dte=max((datetime.fromisoformat(exp).date()-now.date()).days,0)
+            dte=max((date.fromisoformat(exp)-market_today).days,0)
             for side,df in (("call",chain.calls),("put",chain.puts)):
                 if df is None or df.empty:
                     continue
@@ -160,17 +170,28 @@ def option_snapshot(ticker:str, spot:float, annual_rv:float|None=None, max_expir
                     spread=(ask-bid) if bid is not None and ask is not None else None
                     spread_pct=(spread/mid) if spread is not None and mid and mid>0 else None
                     last_trade=row.get("lastTradeDate")
-                    if hasattr(last_trade,"isoformat"):
+                    quote_age_hours=None
+                    if hasattr(last_trade,"to_pydatetime"):
+                        last_trade=last_trade.to_pydatetime()
+                    if isinstance(last_trade,datetime):
+                        if last_trade.tzinfo is None:
+                            last_trade=last_trade.replace(tzinfo=timezone.utc)
+                        else:
+                            last_trade=last_trade.astimezone(timezone.utc)
+                        quote_age_hours=max(0.0,(now-last_trade).total_seconds()/3600.0)
                         last_trade=last_trade.isoformat()
+                    elif last_trade is not None:
+                        last_trade=str(last_trade)
                     rows.append({
                         "contract_symbol":str(row.get("contractSymbol") or ""),
                         "type":side,"expiration":exp,"dte":dte,"strike":strike,
                         "bid":bid,"ask":ask,"mid":_f(mid),"last":last,
                         "iv":_f(row.get("impliedVolatility")),
-                        "volume":int(row.get("volume") or 0),
-                        "open_interest":int(row.get("openInterest") or 0),
+                        "volume":_i(row.get("volume")),
+                        "open_interest":_i(row.get("openInterest")),
                         "in_the_money":bool(row.get("inTheMoney",False)),
-                        "last_trade":str(last_trade) if last_trade is not None else None,
+                        "last_trade":last_trade,
+                        "quote_age_hours":_f(quote_age_hours),
                         "breakeven":_f(breakeven),
                         "breakeven_move":_f((breakeven/spot)-1) if breakeven else None,
                         "spread_pct":_f(spread_pct),
@@ -183,7 +204,7 @@ def option_snapshot(ticker:str, spot:float, annual_rv:float|None=None, max_expir
     liquid.sort(key=lambda r:(r["dte"],abs((r["strike"] or spot)-spot),r["spread_pct"] if r["spread_pct"] is not None else 99))
     return {
         "source":"Yahoo Finance via yfinance",
-        "quote_note":"Quotes may be delayed or stale; verify with a brokerage before acting. Greeks are Black-Scholes estimates, not exchange-provided values.",
+        "quote_note":"Quotes may be delayed or stale; verify with a brokerage before acting. Greeks are Black-Scholes estimates without dividend-yield or early-exercise adjustments, not exchange-provided values.",
         "retrieved_at":now.isoformat(),
         "risk_free_rate":risk_free,
         "risk_free_source":risk_free_source,
