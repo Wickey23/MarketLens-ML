@@ -413,4 +413,4 @@ def run_research():
     except urllib.error.HTTPError as e:
         return jsonify({"ok":False,"error":f"GitHub trigger failed ({e.code})"}),502
     except Exception:
-        return jsonify({"ok":False,"error":"GitHub trigger unavailable"}),502\n
+        return jsonify({"ok":False,"error":"GitHub trigger unavailable"}),502
