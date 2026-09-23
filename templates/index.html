@@ -342,9 +342,19 @@ function submitPaperOrder(){
  pendingReview=null;orderTicket.style.display='none';savePaper(s);renderPaper();
 }
 function processPending(s){
- s.pending.forEach(o=>{const q=lookupContract(o);if(q&&q.ask!=null&&q.ask<=o.limit_price)o._fill=Math.min(q.ask,o.limit_price)});
- const fills=s.pending.filter(o=>o._fill!=null);s.pending=s.pending.filter(o=>o._fill==null);
- fills.forEach(o=>{const {limit_price,created_at,status,_fill,...p}=o;s.open.push({...p,entry_price:_fill,opened_at:new Date().toISOString()})});return fills.length;
+ let filled=0,cash=paperBuyingPower(s),remain=[];
+ (s.pending||[]).forEach(o=>{
+   const q=lookupContract(o),ask=q&&q.ask!=null?Number(q.ask):null;
+   if(ask!=null&&ask<=Number(o.limit_price)){
+     const fill=Math.min(ask,Number(o.limit_price)),cost=fill*100*Number(o.qty||1);
+     if(cost<=cash){
+       const {limit_price,created_at,status,_fill,requested_price,order_type,...p}=o;
+       s.open.push({...p,entry_price:fill,opened_at:new Date().toISOString()});cash-=cost;filled++;return;
+     }
+   }
+   remain.push(o);
+ });
+ s.pending=remain;return filled;
 }
 function lookupContract(p){const t=(P.tickers||[]).find(x=>x.ticker===p.ticker);if(!t)return null;return (((t.options||{}).chain||{}).contracts||[]).find(z=>(p.contract_symbol&&z.contract_symbol===p.contract_symbol)||(!p.contract_symbol&&z.type===p.type&&z.strike===p.strike&&z.expiration===p.expiration))||null}
 function cancelPending(id){const s=paperState();s.pending=s.pending.filter(x=>x.id!==id);savePaper(s);renderPaper()}
