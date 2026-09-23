@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from collections import defaultdict
 import json
 
 STARTING_CASH = 10000.0
@@ -40,6 +41,9 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
     """
     state=state or load_state()
     now=datetime.now(timezone.utc).isoformat()
+    snapshot_id=snapshot.get("generated_at") or snapshot.get("fast_generated_at")
+    if snapshot_id and state.get("last_processed_snapshot")==snapshot_id:
+        return state
     tickers={x["ticker"]:x for x in snapshot.get("tickers",[]) if x.get("ticker")}
 
     # Mark/exit first. Exit on expiry, deteriorating quote, +50% gain, or -35% loss.
@@ -89,10 +93,10 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
         equity=state["cash"]+sum((p.get("last_mark") or p["entry_price"])*100*p["qty"] for p in state["open"])
         budget=min(state["cash"],equity*risk_per_trade)
         qty=int(budget//(entry*100))
+        key=contract_key(q)
         if qty<1:
             state["decisions"].append({"at":now,"ticker":ticker,"contract":key,"action":"skip","reason":"risk budget below one contract"})
             continue
-        key=contract_key(q)
         cost=entry*100*qty
         state["cash"]-=cost
         pos={"id":f"{now}:{key}","ticker":ticker,"contract_key":key,"type":q["type"],
@@ -110,6 +114,7 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
     state["equity_history"].append({"at":now,"equity":equity,"cash":state["cash"],"open_value":open_value})
     state["equity_history"]=state["equity_history"][-1000:]
     state["updated_at"]=now
+    state["last_processed_snapshot"]=snapshot_id
     return state
 
 def performance_summary(state):
