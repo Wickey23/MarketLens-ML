@@ -1,5 +1,5 @@
 import pandas as pd
-from src.opportunity_radar import build_opportunity_radar
+from src.opportunity_radar import build_opportunity_radar, _guidance_payload
 
 def test_radar_surfaces_and_reports_risk():
     idx=pd.bdate_range("2020-01-01",periods=320)
@@ -39,3 +39,34 @@ def test_radar_does_not_surface_zero_dte_as_strong_opportunity():
     }]
     out=build_opportunity_radar(raw,contracts,regimes,"Uptrend",{"mean_roc_auc":.55},float(close.iloc[-1]))
     assert out["opportunities"]==[]
+
+
+def test_guidance_exposes_three_decision_lenses():
+    rows=[
+        {
+            "contract_symbol":"A","state":"investigate","score":82.0,
+            "entry_quote":2.0,"prob_profit":0.66,"prob_profit_ci95":[0.60,0.71],
+            "prob_total_premium_loss":0.18,"expected_return_on_debit":0.22,
+            "p10_pnl_per_contract":-80.0,
+        },
+        {
+            "contract_symbol":"B","state":"investigate","score":77.0,
+            "entry_quote":1.0,"prob_profit":0.60,"prob_profit_ci95":[0.54,0.66],
+            "prob_total_premium_loss":0.25,"expected_return_on_debit":0.70,
+            "p10_pnl_per_contract":-90.0,
+        },
+    ]
+    g=_guidance_payload(rows,{"mean_roc_auc":0.56,"historical_lift_ci95":[0.01,0.08]})
+    assert g["state"]=="strong_candidates"
+    assert g["best_overall"] is not None
+    assert g["highest_upside"]["contract_symbol"]=="B"
+    assert g["higher_probability"]["contract_symbol"]=="A"
+    assert "combined_evidence_score" in g["best_overall"]
+
+
+def test_guidance_returns_explicit_no_trade_state():
+    g=_guidance_payload([
+        {"contract_symbol":"WATCH","state":"watch","score":90.0}
+    ],{"mean_roc_auc":0.60})
+    assert g["state"]=="no_strong_contract"
+    assert g["best_overall"] is None
