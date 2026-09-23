@@ -18,3 +18,15 @@ def test_ai_paper_trader_enters_without_real_order():
     assert out["decisions"][0]["action"]=="paper_buy"
     summary=performance_summary(out)
     assert summary["open_positions"]==1
+
+
+def test_ai_rejects_zero_dte_autonomous_entry():
+    s=snap()
+    q=s["tickers"][0]["options"]["chain"]["contracts"][0]
+    r=s["tickers"][0]["options"]["opportunity_radar"]["opportunities"][0]
+    q["dte"]=0
+    r["dte"]=0
+    state={"starting_cash":10000.0,"cash":10000.0,"open":[],"closed":[],"equity_history":[],"decisions":[]}
+    out=run_ai_paper_portfolio(s,state=state)
+    assert out["open"]==[]
+    assert any(d.get("action")=="skip" and "DTE outside autonomous policy" in d.get("reason","") for d in out["decisions"])
