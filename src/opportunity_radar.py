@@ -227,7 +227,12 @@ def build_opportunity_radar(raw, contracts, regime_series, current_regime, evide
         rows.append({
             "contract_symbol":c.get("contract_symbol"),"type":c.get("type"),
             "expiration":c.get("expiration"),"dte":c.get("dte"),"strike":c.get("strike"),
-            "entry_quote":_f(entry),"base_score":round(base_score,1),"learned_multiplier":round(learned_multiplier,3),"learned_adjustment_points":round(score-base_score,1),"learning_components":learned_components,"score":round(score,1),"state":state,
+            "entry_quote":_f(entry),
+            "bid":_f(c.get("bid")),"ask":_f(c.get("ask")),"spread_pct":_f(spread),
+            "iv":_f(iv),"iv_rv_ratio":_f(c.get("iv_rv_ratio")),
+            "theta_cost_pct_per_day":_f(theta),"open_interest":int(oi),"volume":int(vol),
+            "breakeven":_f(c.get("breakeven")),"breakeven_move":_f(c.get("breakeven_move")),
+            "base_score":round(base_score,1),"learned_multiplier":round(learned_multiplier,3),"learned_adjustment_points":round(score-base_score,1),"learning_components":learned_components,"score":round(score,1),"state":state,
             "historical_scope":"same regime" if len(same)>=80 else "all regimes",
             "trading_day_horizon":h,**stats,"reasons":reasons,"risks":risks,
         })
