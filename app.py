@@ -28,7 +28,7 @@ def read_data():
         )
         with urllib.request.urlopen(req, timeout=8) as response:
             payload = json.loads(response.read().decode("utf-8"))
-            payload["_data_source"] = "github-main-live-v2"
+            payload["_data_source"] = "github-market-data-live-v3"
             return payload
     except Exception as exc:
         # Keep the bundled snapshot only as an outage fallback.
@@ -53,7 +53,7 @@ def data():
 
 @app.get("/api/health")
 def health():
-    return jsonify({"status":"ok","time":datetime.now(timezone.utc).isoformat()})
+    return jsonify({"status":"ok","time":datetime.now(timezone.utc).isoformat(),"commit":os.getenv("VERCEL_GIT_COMMIT_SHA"),"data_branch":"market-data"})
 
 @app.post("/api/run-research")
 def run_research():
