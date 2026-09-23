@@ -199,6 +199,7 @@ const pc=x=>x==null?'—':(Number(x)*100).toFixed(1)+'%';
 const money=x=>x==null?'—':'$'+Number(x).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
 const num=(x,d=2)=>x==null?'—':Number(x).toFixed(d);
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+const safeUrl=u=>{try{const x=new URL(String(u),window.location.origin);return (x.protocol==='http:'||x.protocol==='https:')?x.href:'#'}catch(e){return '#'}};
 const spotNow=()=>C&&C.live_price!=null?Number(C.live_price):(C?Number(C.price):null);
 const oneDayNow=()=>C&&C.live_change_1d!=null?Number(C.live_change_1d):(C?C.change_1d:null);
 
@@ -266,11 +267,12 @@ function renderResearch(){
   const rs=C.relative_strength||{}; relative.textContent=C.ticker==='SPY'?'Benchmark ticker':'20D vs SPY '+(rs.vs_spy_20d==null?'—':((rs.vs_spy_20d>=0?'+':'')+(rs.vs_spy_20d*100).toFixed(1)+' pp'));
   models.innerHTML=Object.entries(C.model_probabilities||{}).map(([k,v])=>'<div class="kv"><span>'+esc(k.replaceAll('_',' '))+'</span><b>'+pc(v)+'</b></div>').join('');
   const e=C.evidence||{},s=C.similar_setups||{};estate.textContent=e.state||'Awaiting evidence';evidenceNote.textContent=(e.validation_quality||'Validation pending')+' · mean AUC '+(e.mean_roc_auc==null?'—':num(e.mean_roc_auc,3));
-  evidenceMore.innerHTML='<div class="kv"><span>Model agreement</span><b>'+pc(e.model_agreement)+'</b></div><div class="kv"><span>Comparable sample</span><b>'+(e.similar_sample_size||0)+'</b></div>';
+  const lci=e.historical_lift_ci95||[null,null];
+  evidenceMore.innerHTML='<div class="kv"><span>Model agreement</span><b>'+pc(e.model_agreement)+'</b></div><div class="kv"><span>Comparable sample</span><b>'+(e.similar_sample_size||0)+'</b></div><div class="kv"><span>Lift 95% interval</span><b>'+((lci[0]==null||lci[1]==null)?'—':((lci[0]*100).toFixed(1)+' to '+(lci[1]*100).toFixed(1)+' pp'))+'</b></div>';
   base.textContent=pc(C.base_up_rate);simrate.textContent=pc(s.actual_up_rate);simn.textContent=(s.observations||0)+' comparable observations';simret.textContent=pc(s.mean_forward_return);lift.textContent=(s.actual_up_rate==null||C.base_up_rate==null)?'—':((s.actual_up_rate-C.base_up_rate)*100).toFixed(1)+' pp';
   plain.innerHTML=(C.plain_language||['Awaiting refreshed research.']).map(x=>'<li>'+esc(x)+'</li>').join('');
   const ctx=C.company_context||{},er=ctx.earnings||{};earnings.textContent=er.days_to_earnings==null?'No upcoming date available':(er.days_to_earnings+' days to earnings');catalysts.textContent=(ctx.catalyst_flags||[]).length?'Headline themes: '+ctx.catalyst_flags.join(', '):(ctx.news_note||'No catalyst themes detected in the current headline set.');
-  news.innerHTML=(ctx.news||[]).slice(0,5).map(n=>'<div class="newsitem">'+(n.url?'<a target="_blank" rel="noopener" href="'+esc(n.url)+'">'+esc(n.title)+'</a>':'<span>'+esc(n.title)+'</span>')+'<div class="sub">'+esc(n.publisher||'')+(n.published_at?' · '+esc(String(n.published_at).slice(0,10)):'')+'</div></div>').join('')||'<div class="empty">No recent headlines in this research snapshot.</div>';
+  news.innerHTML=(ctx.news||[]).slice(0,5).map(n=>'<div class="newsitem">'+(n.url?'<a target="_blank" rel="noopener" href="'+safeUrl(n.url)+'">'+esc(n.title)+'</a>':'<span>'+esc(n.title)+'</span>')+'<div class="sub">'+esc(n.publisher||'')+(n.published_at?' · '+esc(String(n.published_at).slice(0,10)):'')+'</div></div>').join('')||'<div class="empty">No recent headlines in this research snapshot.</div>';
   metrics.innerHTML=(C.metrics||[]).map(m=>'<tr><td>'+esc(m.model.replaceAll('_',' '))+'</td><td>'+pc(m.accuracy)+'</td><td>'+pc(m.f1)+'</td><td>'+num(m.roc_auc,3)+'</td><td>'+num(m.brier,3)+'</td><td>'+m.observations+'</td></tr>').join('');
   draw();
 }
@@ -292,7 +294,7 @@ function contractScore(x){
 function renderChain(){
  const oc=(C.options||{}).chain||{},typ=typeFilter.value,exp=expFilter.value;let rows=(oc.contracts||[]).filter(x=>(typ==='all'||x.type===typ)&&(exp==='all'||x.expiration===exp));
  const ranked=rows.map(x=>({x,r:contractScore(x)})).filter(z=>z.r).sort((a,b)=>b.r.score-a.r.score),best=ranked[0];
- if(best){const x=best.x,r=best.r;window._bestContract=x;bestOptionBox.innerHTML='<div class="label">FACT-BASED CONTRACT HIGHLIGHT</div><div class="value" style="font-size:20px">'+esc(C.ticker)+' '+esc(x.expiration)+' '+money(x.strike)+' '+esc(x.type.toUpperCase())+' <span class="besttag">TOP SCREEN '+r.score+'/100</span></div><div class="sub">Ranks contract mechanics only: liquidity, spread, modeled decay, IV versus realized volatility, breakeven distance and time to expiration. It does not decide market direction or tell you to buy. '+esc(r.parts.join(' · '))+'</div><button class="btn" style="margin-top:9px" onclick="selectBestContract()">Analyze highlighted contract</button>';}else bestOptionBox.innerHTML='<div class="label">FACT-BASED CONTRACT HIGHLIGHT</div><div class="sub">No contract currently passes the screen.</div>';
+ if(best){const x=best.x,r=best.r;window._bestContract=x;bestOptionBox.innerHTML='<div class="label">FACT-BASED CONTRACT HIGHLIGHT</div><div class="value" style="font-size:20px">'+esc(C.ticker)+' '+esc(x.expiration)+' '+money(x.strike)+' '+esc(x.type.toUpperCase())+' <span class="besttag">TOP SCREEN '+r.score+'/100</span></div><div class="sub">Ranks contract mechanics only: liquidity, spread, modeled decay, IV versus realized volatility, breakeven distance and time to expiration. It is a heuristic mechanics screen, not validated alpha, and it does not decide market direction or tell you to buy. '+esc(r.parts.join(' · '))+'</div><button class="btn" style="margin-top:9px" onclick="selectBestContract()">Analyze highlighted contract</button>';}else bestOptionBox.innerHTML='<div class="label">FACT-BASED CONTRACT HIGHLIGHT</div><div class="sub">No contract currently passes the screen.</div>';
  chainRows.innerHTML=rows.slice(0,120).map(x=>{const isBest=best&&x===best.x;return '<tr class="'+(isBest?'bestrow':'')+'"><td>'+(isBest?'<span class="besttag">TOP SCREEN</span> ':'')+'<button class="btn" onclick="selectContractFromButton(this)">Analyze</button></td><td>'+x.type+'</td><td>'+x.expiration+'</td><td>'+x.dte+'</td><td>'+money(x.strike)+'</td><td>'+money(x.bid)+'</td><td>'+money(x.ask)+'</td><td>'+money(x.mid)+'</td><td>'+pc(x.iv)+'</td><td>'+num(x.delta,3)+'</td><td>'+num(x.gamma,4)+'</td><td>'+money(x.theta_per_contract_per_day)+'</td><td>'+money(x.vega_per_contract_per_vol_point)+'</td><td>'+money(x.breakeven)+'</td><td>'+pc(x.breakeven_move)+'</td><td>'+x.open_interest+'</td><td>'+x.volume+'</td><td>'+pc(x.spread_pct)+'</td></tr>'}).join('');
 }
 function selectBestContract(){const x=window._bestContract;if(x)selectContract(x.contract_symbol||"",x.strike,x.type,x.expiration)}
@@ -303,8 +305,9 @@ function selectContract(sym,strike,type,exp){
   if(!selectedContract)return;contractPanel.classList.add('active');
   const x=selectedContract;contractTitle.textContent=C.ticker+' '+x.expiration+' '+money(x.strike)+' '+x.type.toUpperCase();
   contractStats.innerHTML=[
-    ['Premium mid',money(x.mid)],['Breakeven',money(x.breakeven)],['IV',pc(x.iv)],['Delta',num(x.delta,3)],['Theta/day',money(x.theta_per_contract_per_day)],
-    ['Vega/1pt',money(x.vega_per_contract_per_vol_point)],['Spread',pc(x.spread_pct)],['Open interest',x.open_interest],['Max debit',money(x.max_loss_per_contract)],['BE benchmark',pc(x.historical_vol_prob_breakeven)]
+    ['Bid',money(x.bid)],['Ask',money(x.ask)],['Premium mid',money(x.mid)],['Breakeven',money(x.breakeven)],['IV',pc(x.iv)],
+    ['Delta',num(x.delta,3)],['Theta/day',money(x.theta_per_contract_per_day)],['Vega/1pt',money(x.vega_per_contract_per_vol_point)],['Spread',pc(x.spread_pct)],['Open interest',x.open_interest],
+    ['Max debit',money(x.max_loss_per_contract)],['RV BE estimate',pc(x.historical_vol_prob_breakeven)],['Quote age',x.quote_age_hours==null?'—':num(x.quote_age_hours,1)+'h']
   ].map(([a,b])=>'<div class="stat"><div class="label">'+a+'</div><div style="margin-top:7px;font-weight:700">'+b+'</div></div>').join('');
   contractExplain.innerHTML=contractExplanation(x).map(v=>'<li>'+esc(v)+'</li>').join('');
   const checks=x.quality_checks||[];
