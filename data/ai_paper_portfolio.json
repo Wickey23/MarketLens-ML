@@ -1,10 +1,145 @@
 {
   "starting_cash": 10000,
-  "cash": 10000,
-  "open": [],
+  "cash": 9842.0,
+  "open": [
+    {
+      "id": "2026-09-23T17:23:28.433151+00:00:QQQ260923C00738000",
+      "ticker": "QQQ",
+      "contract_key": "QQQ260923C00738000",
+      "type": "call",
+      "strike": 738.0,
+      "expiration": "2026-09-23",
+      "qty": 1,
+      "entry_price": 1.58,
+      "entry_cost": 158.0,
+      "opened_at": "2026-09-23T17:23:28.433151+00:00",
+      "entry_score": 77.5,
+      "entry_dte": 0,
+      "entry_iv": 1.0000000000000003e-05,
+      "entry_iv_rv_ratio": 6.230053207610095e-05,
+      "entry_spread_pct": 0.006349206349206354,
+      "entry_theta_cost_pct_per_day": 0.05154041748284296,
+      "entry_regime": "Uptrend / Normal Vol",
+      "entry_model_auc": 0.5106672775343851,
+      "entry_prob_profit": 0.5936549326379835,
+      "entry_expected_pnl": 259.12395105316244,
+      "entry_scope": "same regime",
+      "entry_reasons": [
+        "Historical payoff replay had positive mean P/L",
+        "Quoted spread is relatively tight",
+        "Higher open interest or activity"
+      ],
+      "entry_risks": [
+        "Daily theta is high relative to premium",
+        "Directional ML model has not demonstrated strong out-of-sample discrimination"
+      ],
+      "entry_research_generated_at": "2026-09-23T17:23:28.433018+00:00"
+    }
+  ],
   "closed": [],
-  "equity_history": [],
-  "decisions": [],
-  "updated_at": null,
-  "last_processed_snapshot": null
+  "equity_history": [
+    {
+      "at": "2026-09-23T17:23:28.433151+00:00",
+      "equity": 9999.0,
+      "cash": 9842.0,
+      "open_value": 157.0
+    }
+  ],
+  "decisions": [
+    {
+      "at": "2026-09-23T17:23:28.433151+00:00",
+      "ticker": "QQQ",
+      "contract": "QQQ260923C00736000",
+      "action": "skip",
+      "reason": "risk budget below one contract"
+    },
+    {
+      "at": "2026-09-23T17:23:28.433151+00:00",
+      "ticker": "QQQ",
+      "contract": "QQQ260923C00735000",
+      "action": "skip",
+      "reason": "risk budget below one contract"
+    },
+    {
+      "at": "2026-09-23T17:23:28.433151+00:00",
+      "ticker": "QQQ",
+      "contract": "QQQ260923C00734000",
+      "action": "skip",
+      "reason": "risk budget below one contract"
+    },
+    {
+      "at": "2026-09-23T17:23:28.433151+00:00",
+      "ticker": "SPY",
+      "contract": "SPY260923C00764000",
+      "action": "skip",
+      "reason": "risk budget below one contract"
+    },
+    {
+      "at": "2026-09-23T17:23:28.433151+00:00",
+      "ticker": "QQQ",
+      "contract": "QQQ260923C00733000",
+      "action": "skip",
+      "reason": "risk budget below one contract"
+    },
+    {
+      "at": "2026-09-23T17:23:28.433151+00:00",
+      "ticker": "QQQ",
+      "contract": "QQQ260923C00732000",
+      "action": "skip",
+      "reason": "risk budget below one contract"
+    },
+    {
+      "at": "2026-09-23T17:23:28.433151+00:00",
+      "ticker": "SPY",
+      "contract": "SPY260923C00763000",
+      "action": "skip",
+      "reason": "risk budget below one contract"
+    },
+    {
+      "at": "2026-09-23T17:23:28.433151+00:00",
+      "ticker": "QQQ",
+      "contract": "QQQ260923C00737000",
+      "action": "skip",
+      "reason": "risk budget below one contract"
+    },
+    {
+      "at": "2026-09-23T17:23:28.433151+00:00",
+      "ticker": "SPY",
+      "contract": "SPY260923C00762000",
+      "action": "skip",
+      "reason": "risk budget below one contract"
+    },
+    {
+      "at": "2026-09-23T17:23:28.433151+00:00",
+      "ticker": "SPY",
+      "contract": "SPY260923C00761000",
+      "action": "skip",
+      "reason": "risk budget below one contract"
+    },
+    {
+      "at": "2026-09-23T17:23:28.433151+00:00",
+      "ticker": "SPY",
+      "contract": "SPY260923C00765000",
+      "action": "skip",
+      "reason": "risk budget below one contract"
+    },
+    {
+      "at": "2026-09-23T17:23:28.433151+00:00",
+      "ticker": "QQQ",
+      "contract": "QQQ260923C00738000",
+      "action": "paper_buy",
+      "qty": 1,
+      "price": 1.58,
+      "score": 77.5
+    },
+    {
+      "at": "2026-09-23T17:23:28.433151+00:00",
+      "ticker": "SPY",
+      "contract": "SPY260923C00760000",
+      "action": "skip",
+      "reason": "risk budget below one contract"
+    }
+  ],
+  "updated_at": "2026-09-23T17:23:28.433151+00:00",
+  "last_processed_snapshot": "2026-09-23T17:23:28.433018+00:00"
 }
