@@ -11,6 +11,8 @@ from src.data_loader import download_prices
 from src.features import build_features
 from src.options_data import option_snapshot
 from src.regime import classify_regime
+from src.opportunity_radar import build_opportunity_radar
+from src.ai_paper_trader import load_state, save_state, run_ai_paper_portfolio, performance_summary, performance_attribution
 
 DATA_PATH=Path("data/dashboard.json")
 DEFAULT_TICKERS=["SPY","VOO","QQQ","VXUS"]
@@ -66,6 +68,8 @@ def quick_snapshot(ticker):
             "realized_move_1sd":sf(daily.rolling(252).std().iloc[-1]*sqrt(h)),
         }
     chain=option_snapshot(ticker,float(close.iloc[-1]),annual_rv)
+    regime_series=classify_regime(raw)
+    current_regime=str(regime_series.iloc[-1])
     try:
         ctx=company_context(ticker)
     except Exception:
@@ -99,6 +103,12 @@ def merge(old,new):
     for k in keep:
         if k in old:
             new[k]=old[k]
+    try:
+        raw=download_prices(new["ticker"],"2010-01-01")
+        regimes=classify_regime(raw)
+        new["options"]["opportunity_radar"]=build_opportunity_radar(raw,((new["options"].get("chain") or {}).get("contracts") or []),regimes,new.get("regime"),new.get("evidence") or {},float(new["price"]))
+    except Exception as exc:
+        new["options"]["opportunity_radar"]={"state":"unavailable","opportunities":[],"watchlist":[],"error":str(exc)}
     return new
 
 
@@ -117,9 +127,12 @@ def main():
     p["generated_at"]=datetime.now(timezone.utc).isoformat()
     p["fast_generated_at"]=p["generated_at"]
     p["errors"]=errors
+    ai_state=run_ai_paper_portfolio(p,load_state())
+    save_state(ai_state)
+    p["ai_portfolio"]={"summary":performance_summary(ai_state),"attribution":performance_attribution(ai_state),"updated_at":ai_state.get("updated_at"),"open":ai_state.get("open",[]),"closed":ai_state.get("closed",[])[-100:],"decisions":ai_state.get("decisions",[])[-100:],"equity_history":ai_state.get("equity_history",[])[-300:]}
     DATA_PATH.parent.mkdir(exist_ok=True)
     DATA_PATH.write_text(json.dumps(p,indent=2),encoding="utf-8")
-    print(json.dumps({"refreshed":tickers,"errors":errors},indent=2))
+    print(json.dumps({"refreshed":tickers,"errors":errors,"ai_portfolio":p["ai_portfolio"]["summary"]},indent=2))
 
 
 if __name__=="__main__":
