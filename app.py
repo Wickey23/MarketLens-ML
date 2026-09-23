@@ -301,9 +301,27 @@ load();
 </body></html>"""
 
 def read_data():
-    if DATA.exists():
-        return json.loads(DATA.read_text(encoding="utf-8"))
-    return {"generated_at": datetime.now(timezone.utc).isoformat(), "horizon_days": 5, "tickers": [], "errors": ["Awaiting first research run"]}
+    # dashboard.json changes much more often than the application deployment.
+    # Read the current main-branch snapshot directly so Vercel never serves
+    # the copy that happened to be bundled at build time.
+    url = "https://raw.githubusercontent.com/Wickey23/MarketLens-ML/main/data/dashboard.json"
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": "MarketLens-ML/1.0", "Cache-Control": "no-cache"},
+        )
+        with urllib.request.urlopen(req, timeout=8) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+            payload["_data_source"] = "github-main-live"
+            return payload
+    except Exception as exc:
+        # Keep the bundled snapshot only as an outage fallback.
+        if DATA.exists():
+            payload = json.loads(DATA.read_text(encoding="utf-8"))
+            payload["_data_source"] = "bundled-fallback"
+            payload["_live_data_error"] = str(exc)
+            return payload
+        return {"generated_at": datetime.now(timezone.utc).isoformat(), "horizon_days": 5, "tickers": [], "errors": ["Live research snapshot unavailable"], "_live_data_error": str(exc)}
 
 @app.get("/")
 def home():
