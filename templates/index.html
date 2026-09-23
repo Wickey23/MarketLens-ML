@@ -150,7 +150,7 @@ body{background:radial-gradient(circle at 50% -20%,#10203a 0,transparent 38%),va
 </main>
 
 <script>
-let liveQuoteTimer=null;
+let liveQuoteTimer=null,dataSyncTimer=null;
 async function refreshLiveQuote(){
   if(!C||!C.ticker||document.hidden)return;
   const requested=C.ticker;
@@ -174,6 +174,24 @@ function startLiveQuotePolling(){
   if(liveQuoteTimer)clearInterval(liveQuoteTimer);
   refreshLiveQuote();
   liveQuoteTimer=setInterval(refreshLiveQuote,15000);
+}
+async function syncResearchSnapshot(){
+  if(!P||document.hidden)return;
+  try{
+    const r=await fetch('/api/data',{cache:'no-store'});
+    if(!r.ok)return;
+    const n=await r.json();
+    if(n.generated_at&&n.generated_at!==P.generated_at){
+      const selected=C&&C.ticker;
+      P=n;
+      await reloadData(selected||null);
+      runStatus.textContent='Research/options snapshot updated ✓';
+    }
+  }catch(e){}
+}
+function startResearchSync(){
+  if(dataSyncTimer)clearInterval(dataSyncTimer);
+  dataSyncTimer=setInterval(syncResearchSnapshot,120000);
 }
 
 let P,C,ch,selectedContract,aiCh,pendingReview=null;
@@ -437,6 +455,7 @@ function renderAI(){
 }
 
 function draw(){if(ch)ch.destroy();ch=new Chart(chart,{type:'line',data:{labels:(C.history||[]).map(x=>x.date),datasets:[{label:C.ticker+' close',data:(C.history||[]).map(x=>x.close),borderWidth:2,pointRadius:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#8190a5'}}},scales:{x:{ticks:{color:'#657489',maxTicksLimit:8},grid:{display:false}},y:{ticks:{color:'#657489'},grid:{color:'#151d29'}}}}})}
-load();
+load().then(startResearchSync);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){refreshLiveQuote();syncResearchSnapshot();}});
 </script>
 </body></html>
