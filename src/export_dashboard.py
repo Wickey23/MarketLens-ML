@@ -308,7 +308,7 @@ def analyze(ticker):
         "change_5d":sf(close.pct_change(5).iloc[-1]),
         "probability_5d_up":current,
         "model_probabilities":mp,
-        "regime":str(classify_regime(raw).iloc[-1]),
+        "regime":current_regime,
         "volatility_20d":annual_rv,
         "rsi_14":sf(latest["rsi_14"]),
         "drawdown_252":sf(latest["drawdown_252"]),
