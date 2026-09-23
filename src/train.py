@@ -19,9 +19,11 @@ def dataset(ticker: str = "SPY", start: str = "2010-01-01", horizon: int = 5) ->
     return add_target(build_features(download_prices(ticker, start)), horizon).dropna(subset=FEATURES + ["target"])
 
 
-def evaluate_walk_forward(data: pd.DataFrame) -> pd.DataFrame:
+def evaluate_walk_forward(data: pd.DataFrame, horizon: int = 5) -> pd.DataFrame:
     X, y = data[FEATURES], data["target"].astype(int)
-    splitter = TimeSeriesSplit(n_splits=5)
+    # Gap the folds by the forecast horizon so training labels cannot use
+    # future prices that overlap the beginning of the validation fold.
+    splitter = TimeSeriesSplit(n_splits=5, gap=horizon)
     models = {
         "logistic": Pipeline([("scale", StandardScaler()), ("model", LogisticRegression(max_iter=2000))]),
         "random_forest": RandomForestClassifier(n_estimators=400, min_samples_leaf=10, random_state=42, n_jobs=-1),
@@ -43,7 +45,7 @@ def main() -> None:
     model = RandomForestClassifier(n_estimators=400, min_samples_leaf=10, random_state=42, n_jobs=-1)
     model.fit(data[FEATURES], data["target"].astype(int))
     Path("models").mkdir(exist_ok=True)
-    joblib.dump({"model": model, "features": FEATURES}, "models/spy_rf.joblib")
+    joblib.dump({"model": model, "features": FEATURES, "ticker": "SPY", "horizon": 5}, "models/spy_rf.joblib")
     print("Saved models/spy_rf.joblib")
 
 
