@@ -4,12 +4,15 @@ from pathlib import Path
 import json
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 
 app = Flask(__name__)
 # deployment marker removed
 DATA = Path(__file__).with_name("data") / "dashboard.json"
+_TRIGGER_COOLDOWN_SECONDS = 30
+_trigger_last_seen = {}
 
 
 
@@ -54,17 +57,31 @@ def health():
 
 @app.post("/api/run-research")
 def run_research():
-    token=os.getenv("GITHUB_ACTIONS_TOKEN")
-    if not token:
-        return jsonify({"ok":False,"error":"Server trigger is not configured"}),503
     body=request.get_json(silent=True) or {}
     ticker=str(body.get("ticker") or "").upper().strip()
     if ticker and not re.fullmatch(r"[A-Z][A-Z0-9.\-]{0,7}",ticker):
         return jsonify({"ok":False,"error":"Invalid ticker"}),400
+
+    token=os.getenv("GITHUB_ACTIONS_TOKEN")
+    if not token:
+        return jsonify({"ok":False,"error":"Server trigger is not configured"}),503
+
+    # This public UI can launch only the lightweight refresh workflow.
+    # Heavy research remains scheduled/manual so a public request cannot
+    # repeatedly consume the expensive model-training workflow.
+    forwarded=request.headers.get("X-Forwarded-For","")
+    client=(forwarded.split(",")[0].strip() if forwarded else request.remote_addr) or "unknown"
+    now=time.monotonic()
+    last=_trigger_last_seen.get(client)
+    if last is not None and now-last<_TRIGGER_COOLDOWN_SECONDS:
+        wait=max(1,int(_TRIGGER_COOLDOWN_SECONDS-(now-last)))
+        return jsonify({"ok":False,"error":f"Please wait {wait}s before starting another refresh"}),429
+    _trigger_last_seen[client]=now
+
     payload={"ref":"main"}
     if ticker:
         payload["inputs"]={"ticker":ticker}
-    workflow="fast-refresh.yml" if str(body.get("mode") or "fast")!="full" else "daily-research.yml"
+    workflow="fast-refresh.yml"
     url=f"https://api.github.com/repos/Wickey23/MarketLens-ML/actions/workflows/{workflow}/dispatches"
     req=urllib.request.Request(url,data=json.dumps(payload).encode(),method="POST",headers={
         "Authorization":f"Bearer {token}",
