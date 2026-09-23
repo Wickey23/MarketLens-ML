@@ -13,6 +13,8 @@ app = Flask(__name__)
 DATA = Path(__file__).with_name("data") / "dashboard.json"
 _TRIGGER_COOLDOWN_SECONDS = 30
 _trigger_last_seen = {}
+_live_quote_cache = {}
+_LIVE_QUOTE_TTL_SECONDS = 8
 
 
 
@@ -38,6 +40,91 @@ def read_data():
             payload["_live_data_error"] = str(exc)
             return payload
         return {"generated_at": datetime.now(timezone.utc).isoformat(), "horizon_days": 5, "tickers": [], "errors": ["Live research snapshot unavailable"], "_live_data_error": str(exc)}
+
+
+def _snapshot_quote(ticker):
+    payload=read_data()
+    row=next((x for x in payload.get("tickers",[]) if str(x.get("ticker","")).upper()==ticker),None)
+    if not row:
+        return None
+    return {
+        "ticker":ticker,
+        "price":row.get("price"),
+        "previous_close":None,
+        "open":None,
+        "high":None,
+        "low":None,
+        "change":None,
+        "change_pct":row.get("change_1d"),
+        "market_timestamp":row.get("fast_refreshed_at") or row.get("as_of"),
+        "provider":"market-data snapshot",
+        "realtime":False,
+        "delayed":True,
+    }
+
+def _yahoo_live_quote(ticker):
+    # Best-effort near-live fallback requiring no additional dependency.
+    # Yahoo timestamps/availability can be delayed and rate-limited.
+    url=f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1m&range=1d&includePrePost=true"
+    req=urllib.request.Request(url,headers={"User-Agent":"Mozilla/5.0 MarketLens/1.0","Cache-Control":"no-cache"})
+    with urllib.request.urlopen(req,timeout=5) as response:
+        body=json.loads(response.read().decode("utf-8"))
+    result=((body.get("chart") or {}).get("result") or [None])[0]
+    if not result:
+        return None
+    meta=result.get("meta") or {}
+    price=meta.get("regularMarketPrice")
+    prev=meta.get("chartPreviousClose") or meta.get("previousClose")
+    change=(float(price)-float(prev)) if price is not None and prev not in (None,0) else None
+    change_pct=(change/float(prev)) if change is not None and prev not in (None,0) else None
+    ts=meta.get("regularMarketTime")
+    market_timestamp=datetime.fromtimestamp(ts,timezone.utc).isoformat() if ts else None
+    return {
+        "ticker":ticker,
+        "price":price,
+        "previous_close":prev,
+        "open":meta.get("regularMarketOpen"),
+        "high":meta.get("regularMarketDayHigh"),
+        "low":meta.get("regularMarketDayLow"),
+        "change":change,
+        "change_pct":change_pct,
+        "market_timestamp":market_timestamp,
+        "exchange":meta.get("exchangeName"),
+        "market_state":meta.get("marketState"),
+        "provider":"Yahoo Finance chart",
+        "realtime":False,
+        "delayed":True,
+        "note":"Best-effort near-live underlying quote; may be delayed. Options remain on the scheduled research snapshot."
+    }
+
+def live_quote(ticker):
+    now=time.monotonic()
+    cached=_live_quote_cache.get(ticker)
+    if cached and now-cached["at"]<_LIVE_QUOTE_TTL_SECONDS:
+        return cached["payload"]
+    out=None
+    try:
+        out=_yahoo_live_quote(ticker)
+    except Exception:
+        out=None
+    if out is None:
+        out=_snapshot_quote(ticker)
+    if out is not None:
+        out["served_at"]=datetime.now(timezone.utc).isoformat()
+        _live_quote_cache[ticker]={"at":now,"payload":out}
+    return out
+
+@app.get("/api/live-quote")
+def api_live_quote():
+    ticker=str(request.args.get("ticker") or "").upper().strip()
+    if not re.fullmatch(r"[A-Z][A-Z0-9.\-]{0,7}",ticker):
+        return jsonify({"ok":False,"error":"Invalid ticker"}),400
+    q=live_quote(ticker)
+    if q is None:
+        return jsonify({"ok":False,"error":"Quote unavailable","ticker":ticker}),502
+    response=jsonify({"ok":True,**q})
+    response.headers["Cache-Control"]="no-store, no-cache, must-revalidate, max-age=0"
+    return response
 
 @app.get("/")
 def home():
