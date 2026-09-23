@@ -110,6 +110,12 @@
       "equity": 10015.0,
       "cash": 10015.0,
       "open_value": 0
+    },
+    {
+      "at": "2026-09-23T18:11:55.028463+00:00",
+      "equity": 10015.0,
+      "cash": 10015.0,
+      "open_value": 0
     }
   ],
   "decisions": [
@@ -250,8 +256,16 @@
       "score": 75.4,
       "reason": "DTE outside autonomous policy; implausible IV for autonomous entry",
       "strategy_version": "v2_conservative"
+    },
+    {
+      "at": "2026-09-23T18:11:55.028463+00:00",
+      "ticker": "VOO",
+      "contract": "VOO261016C00680000",
+      "action": "skip",
+      "reason": "risk budget below one contract",
+      "strategy_version": "v2_conservative"
     }
   ],
-  "updated_at": "2026-09-23T17:55:11.029973+00:00",
-  "last_processed_snapshot": "2026-09-23T17:55:11.029772+00:00"
+  "updated_at": "2026-09-23T18:11:55.028463+00:00",
+  "last_processed_snapshot": "2026-09-23T18:11:55.028290+00:00"
 }
