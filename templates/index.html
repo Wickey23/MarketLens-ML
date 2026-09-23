@@ -98,7 +98,7 @@ body{background:radial-gradient(circle at 50% -20%,#10203a 0,transparent 38%),va
 </section>
 <section class="box table"><div class="label">UNDERLYING HISTORICAL DISTRIBUTION</div><div class="sub" id="optstatus">—</div>
 <table><thead><tr><th>Horizon</th><th>Positive rate</th><th>Median</th><th>10th pct</th><th>25th pct</th><th>75th pct</th><th>90th pct</th><th>1σ move</th></tr></thead><tbody id="optionsRows"></tbody></table></section>
-<section class="box returnOutlook"><div class="label">RETURN OUTLOOK · HISTORICAL REPLAY</div><div class="sub">Three research lenses for comparing option upside and risk. These are hypothetical historical replays using today's contract economics, not guaranteed future returns.</div><div class="outlookGrid" id="returnOutlook"><div class="empty">Waiting for Opportunity Radar data…</div></div></section><section class="box" id="bestOptionBox"><div class="label">FACT-BASED CONTRACT HIGHLIGHT</div><div class="sub">Loading contract screen…</div></section>
+<section class="box" style="margin-top:12px"><div class="label">MARKET-WIDE STRONGEST CANDIDATES</div><div class="sub">Ranks the best-overall contract from every deeply analyzed ticker in the current universe. A blank list means the system found no contract strong enough to elevate.</div><div id="marketWideOptions" style="margin-top:10px"></div></section><section class="box returnOutlook"><div class="label">RETURN OUTLOOK · HISTORICAL REPLAY</div><div class="sub">Three research lenses for comparing option upside and risk. These are hypothetical historical replays using today's contract economics, not guaranteed future returns.</div><div class="outlookGrid" id="returnOutlook"><div class="empty">Waiting for Opportunity Radar data…</div></div></section><section class="box" id="bestOptionBox"><div class="label">FACT-BASED CONTRACT HIGHLIGHT</div><div class="sub">Loading contract screen…</div></section>
 <section class="box table">
 <div class="controls"><div><div class="label">OPTION CHAIN</div><div class="sub" id="chainNote">—</div></div>
 <select id="typeFilter" class="select" onchange="renderChain()"><option value="all">Calls + puts</option><option value="call">Calls</option><option value="put">Puts</option></select>
@@ -465,6 +465,33 @@ function renderReturnOutlook(){
   el.querySelectorAll('.radarAnalyzeBtn').forEach(btn=>btn.onclick=()=>analyzeRadarCandidate(btn.dataset.sym));
   el.querySelectorAll('.radarPaperBtn').forEach(btn=>btn.onclick=()=>prepareRadarPaper(btn.dataset.sym));
 }
+function openMarketCandidate(ticker,sym,paper=false){
+  const b=[...tabs.children].find(x=>x.textContent===ticker);
+  sel(ticker,b||null);
+  analyzeRadarCandidate(sym);
+  if(paper&&selectedContract){
+    paperOrderType.value='market';toggleLimit();paperTrade();
+    setTimeout(()=>orderTicket.scrollIntoView({behavior:'smooth',block:'center'}),50);
+  }
+}
+function renderMarketWideOptions(){
+  const el=document.getElementById('marketWideOptions');if(!el||!P)return;
+  let rows=[];
+  (P.tickers||[]).forEach(t=>{
+    const g=(((t.options||{}).opportunity_radar||{}).guidance)||{};
+    if(g.state==='strong_candidates'&&g.best_overall)rows.push(Object.assign({ticker:t.ticker},g.best_overall));
+  });
+  rows.sort((a,b)=>(b.combined_evidence_score||b.score||0)-(a.combined_evidence_score||a.score||0));
+  if(!rows.length){
+    el.innerHTML='<div class="empty"><b>NO STRONG MARKET-WIDE CONTRACT RIGHT NOW</b><div class="sub">The scanner is active, but none of the currently analyzed contracts clears the combined evidence gates.</div></div>';
+    return;
+  }
+  el.innerHTML='<div class="table"><table><thead><tr><th>Rank</th><th>Ticker</th><th>Contract</th><th>Evidence</th><th>Hist. mean return</th><th>Profit frequency</th><th>95% interval</th><th>Full loss freq.</th><th>Spread</th><th>Theta/day</th><th></th></tr></thead><tbody>'+
+    rows.slice(0,10).map((x,i)=>{const ci=x.prob_profit_ci95||[null,null];return '<tr><td>#'+(i+1)+'</td><td><b>'+esc(x.ticker)+'</b></td><td>'+esc(x.expiration)+' '+money(x.strike)+' '+esc(String(x.type||'').toUpperCase())+'</td><td>'+num(x.combined_evidence_score!=null?x.combined_evidence_score:x.score,1)+'/100</td><td>'+pc(x.expected_return_on_debit)+'</td><td>'+pc(x.prob_profit)+'</td><td>'+((ci[0]==null||ci[1]==null)?'—':pc(ci[0])+'–'+pc(ci[1]))+'</td><td>'+pc(x.prob_total_premium_loss)+'</td><td>'+pc(x.spread_pct)+'</td><td>'+pc(x.theta_cost_pct_per_day)+'</td><td><button class="btn globalAnalyze" data-ticker="'+esc(x.ticker)+'" data-sym="'+esc(x.contract_symbol||'')+'">Analyze</button> <button class="btn primary globalPaper" data-ticker="'+esc(x.ticker)+'" data-sym="'+esc(x.contract_symbol||'')+'">Paper test</button></td></tr>'}).join('')+
+    '</tbody></table></div>';
+  el.querySelectorAll('.globalAnalyze').forEach(btn=>btn.onclick=()=>openMarketCandidate(btn.dataset.ticker,btn.dataset.sym,false));
+  el.querySelectorAll('.globalPaper').forEach(btn=>btn.onclick=()=>openMarketCandidate(btn.dataset.ticker,btn.dataset.sym,true));
+}
 function renderOptions(){
   const o=C.options||{},sum=o.summary||{},ctx=C.company_context||{},er=ctx.earnings||{};
   optRV.textContent=pc(o.realized_vol_20d);atmMove.textContent=pc(sum.atm_straddle_implied_move);atmExp.textContent=sum.atm_expiration?('Nearest reference expiration '+sum.atm_expiration):'Awaiting chain';optEarnings.textContent=er.days_to_earnings==null?'—':er.days_to_earnings+' days';
@@ -472,7 +499,7 @@ function renderOptions(){
   optionsRows.innerHTML=Object.entries(o.horizons||{}).map(([h,x])=>'<tr><td>'+h+' days</td><td>'+pc(x.positive_rate)+'</td><td>'+pc(x.median_return)+'</td><td>'+pc(x.p10)+'</td><td>'+pc(x.p25)+'</td><td>'+pc(x.p75)+'</td><td>'+pc(x.p90)+'</td><td>'+pc(x.realized_move_1sd)+'</td></tr>').join('');
   const oc=o.chain||{};chainNote.textContent=oc.quote_note||oc.error||'Awaiting option-chain refresh';
   expFilter.innerHTML='<option value="all">All expirations</option>'+(oc.expirations||[]).map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('');
-  renderChain();renderReturnOutlook();updateMarketStreamSymbols();
+  renderChain();renderReturnOutlook();renderMarketWideOptions();updateMarketStreamSymbols();
 }
 function contractScore(x){
  if(!x||!x.mid||x.mid<=0||x.dte==null||Number(x.dte)<1||x.bid==null||x.ask==null||Number(x.bid)<=0||Number(x.ask)<=0||Number(x.ask)<Number(x.bid))return null;
