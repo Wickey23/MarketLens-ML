@@ -48,6 +48,80 @@ def _historical_outcomes(contract, spot, entry, returns):
         "median_return_on_debit":_f(np.median(ret)),
     }
 
+def _guidance_payload(rows, evidence):
+    """Build neutral decision-support lenses from already-screened contracts."""
+    eligible=[r for r in rows if r.get("state")=="investigate"]
+    if not eligible:
+        return {
+            "state":"no_strong_contract",
+            "best_overall":None,
+            "highest_upside":None,
+            "higher_probability":None,
+            "note":"No contract currently clears the full quality, execution and historical-evidence gates.",
+        }
+
+    def downside_return(r):
+        entry=float(r.get("entry_quote") or 0)
+        p10=r.get("p10_pnl_per_contract")
+        return (float(p10)/(entry*100.0)) if entry>0 and p10 is not None else -1.0
+
+    def reward_downside(r):
+        ev=float(r.get("expected_return_on_debit") or 0)
+        d=abs(min(0.0,downside_return(r)))
+        return ev/(d if d>1e-9 else .01)
+
+    auc=(evidence or {}).get("mean_roc_auc")
+    lift_ci=(evidence or {}).get("historical_lift_ci95") or [None,None]
+
+    enriched=[]
+    for r in eligible:
+        q=dict(r)
+        p=float(q.get("prob_profit") or 0)
+        ci=q.get("prob_profit_ci95") or [None,None]
+        ci_floor=float(ci[0]) if ci and ci[0] is not None else 0.0
+        ev=float(q.get("expected_return_on_debit") or 0)
+        loss=float(q.get("prob_total_premium_loss") or 0)
+        rr=reward_downside(q)
+        combined=float(q.get("score") or 0)
+        combined += max(-6,min(6,(ci_floor-.50)*30))
+        combined += max(-6,min(6,ev*8))
+        combined += max(-5,min(5,(rr-.25)*4))
+        combined -= max(0,min(6,(loss-.35)*12))
+        if auc is not None:
+            combined += max(-3,min(3,(float(auc)-.50)*30))
+        if lift_ci[0] is not None and float(lift_ci[0])>0:
+            combined += 2
+        elif lift_ci[1] is not None and float(lift_ci[1])<0:
+            combined -= 2
+        q["combined_evidence_score"]=round(max(0,min(100,combined)),1)
+        q["historical_downside_return_p10"]=_f(downside_return(q))
+        q["reward_to_p10_downside"]=_f(rr)
+        q["guidance_explanation"]=[
+            f"Historical replay profit frequency {p*100:.0f}%",
+            f"Historical mean return on debit {ev*100:.0f}%",
+            f"Full-premium-loss frequency {loss*100:.0f}%",
+            f"Contract quality score {float(q.get('score') or 0):.1f}/100",
+            ("Directional model validation remains weak and receives limited weight"
+             if auc is None or float(auc)<.53 else
+             f"Directional model mean walk-forward AUC {float(auc):.3f}"),
+        ]
+        enriched.append(q)
+
+    best=max(enriched,key=lambda r:(r["combined_evidence_score"],r.get("score") or 0))
+    upside=max(enriched,key=lambda r:(r.get("expected_return_on_debit") if r.get("expected_return_on_debit") is not None else -1e9,
+                                     r.get("combined_evidence_score") or 0))
+    probability=max(enriched,key=lambda r:((r.get("prob_profit_ci95") or [0])[0] or 0,
+                                          r.get("prob_profit") or 0,
+                                          r.get("combined_evidence_score") or 0))
+    return {
+        "state":"strong_candidates",
+        "best_overall":best,
+        "highest_upside":upside,
+        "higher_probability":probability,
+        "note":"Candidates are ranked from current execution quality plus historical replay and validated evidence. They are not guaranteed future-return estimates.",
+    }
+
+
 def build_opportunity_radar(raw, contracts, regime_series, current_regime, evidence, spot, limit=12, learning=None):
     """Historical contract screen.
 
@@ -161,10 +235,12 @@ def build_opportunity_radar(raw, contracts, regime_series, current_regime, evide
     rows.sort(key=lambda x:(x["state"]=="investigate",x["score"],x.get("expected_pnl_per_contract") or -1e9),reverse=True)
     surfaced=[x for x in rows if x["state"]=="investigate"][:limit]
     watch=[x for x in rows if x["state"]=="watch"][:limit]
+    guidance=_guidance_payload(rows,evidence)
     return {
         "state":"opportunities_detected" if surfaced else "no_strong_setup",
         "opportunities":surfaced,
         "watchlist":watch,
+        "guidance":guidance,
         "contracts_evaluated":len(rows),
         "learning_enabled":bool((learning or {}).get("enabled")),
         "method_note":"Today's contract economics replayed across historical underlying moves. Results are hypothetical, exclude changing historical IV/Greeks and are not a profitability guarantee.",
