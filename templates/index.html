@@ -459,6 +459,8 @@ function renderReturnOutlook(){
       '<div class="kv"><span>IV / realized vol</span><b>'+((x.iv_rv_ratio==null)?'—':num(x.iv_rv_ratio,2)+'×')+'</b></div>'+
       '<div class="kv"><span>OI / volume</span><b>'+Number(x.open_interest||0).toLocaleString()+' / '+Number(x.volume||0).toLocaleString()+'</b></div>'+
       '<div class="outlookBand"><b>Why this surfaced:</b> '+esc(why)+' '+esc((x.reasons||[]).join(' · '))+'</div>'+
+      ((x.guidance_explanation||[]).length?'<div class="outlookBand" style="margin-top:7px"><b>All-data factors:</b> '+esc(x.guidance_explanation.join(' · '))+'</div>':'')+
+      ((x.all_data_components)?'<div class="outlookBand" style="margin-top:7px"><b>Research context:</b> regime '+esc(x.all_data_components.regime||'—')+' · model AUC '+(x.all_data_components.walk_forward_auc==null?'—':num(x.all_data_components.walk_forward_auc,3))+' · 5D model '+pc(x.all_data_components.model_probability_5d_up)+' · 20D RS vs SPY '+pc(x.all_data_components.relative_strength_vs_spy_20d)+' · earnings '+(x.all_data_components.days_to_earnings==null?'—':esc(x.all_data_components.days_to_earnings+'d'))+'</div>':'')+
       ((x.risks||[]).length?'<div class="outlookBand" style="margin-top:7px"><b>What can go wrong:</b> '+esc(x.risks.join(' · '))+'</div>':'')+
       '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn radarAnalyzeBtn" data-sym="'+esc(x.contract_symbol||'')+'">Analyze</button><button class="btn primary radarPaperBtn" data-sym="'+esc(x.contract_symbol||'')+'">Prepare paper order</button></div></div>';
   }).join('');
