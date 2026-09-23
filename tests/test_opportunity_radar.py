@@ -25,3 +25,17 @@ def test_radar_returns_no_setup_for_empty_chain():
     regimes=pd.Series(["Sideways"]*100,index=idx)
     r=build_opportunity_radar(raw,[],regimes,"Sideways",{},100)
     assert r["state"]=="no_strong_setup"
+
+
+def test_radar_does_not_surface_zero_dte_as_strong_opportunity():
+    idx=pd.bdate_range("2020-01-01",periods=320)
+    close=pd.Series([100*(1.001**i) for i in range(len(idx))],index=idx)
+    raw=pd.DataFrame({"Close":close})
+    regimes=pd.Series(["Uptrend"]*len(idx),index=idx)
+    contracts=[{
+        "contract_symbol":"ZERO","type":"call","expiration":"2030-01-01","dte":0,
+        "strike":float(close.iloc[-1]),"ask":1.0,"mid":.99,"spread_pct":.01,
+        "theta_cost_pct_per_day":.01,"open_interest":1000,"volume":500,"iv":.25,
+    }]
+    out=build_opportunity_radar(raw,contracts,regimes,"Uptrend",{"mean_roc_auc":.55},float(close.iloc[-1]))
+    assert out["opportunities"]==[]
