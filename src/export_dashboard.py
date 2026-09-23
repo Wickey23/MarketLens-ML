@@ -342,13 +342,16 @@ def load_existing():
 def main():
     current_learning=learning_profile(load_state())
     requested=(os.getenv("MARKETLENS_TICKER") or "").strip().upper()
+    p=load_existing()
+    tracked=[x.get("ticker") for x in p.get("tickers",[]) if x.get("ticker")]
     if requested:
         tickers=[requested]
-        p=load_existing()
         p["errors"]=[e for e in p.get("errors",[]) if e.get("ticker")!=requested]
     else:
-        tickers=DEFAULT_TICKERS
-        p={"generated_at":None,"horizon_days":HORIZON,"tickers":[],"errors":[]}
+        # Preserve and refresh user-added symbols rather than dropping them
+        # at the end-of-day research run. Cap automatic work to 12 symbols.
+        tickers=list(dict.fromkeys(DEFAULT_TICKERS+tracked))[:12]
+        p["errors"]=[]
 
     by_ticker={x["ticker"]:x for x in p.get("tickers",[]) if x.get("ticker")}
     for t in tickers:
