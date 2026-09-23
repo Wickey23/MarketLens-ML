@@ -79,7 +79,32 @@ def build_opportunity_radar(raw, contracts, regime_series, current_regime, evide
         score += 5 if (oi>=500 or vol>=100) else (2 if (oi>=100 or vol>=20) else -4)
         if stats["samples"]<100:
             score-=8
-        base_score=max(0,min(100,score))\n        learned_multiplier=1.0\n        learned_components=[]\n        lp=learning or {}\n        if lp.get("enabled"):\n            factors=lp.get("factors") or {}\n            def apply_factor(name, group):\n                nonlocal learned_multiplier\n                row=next((z for z in factors.get(name,[]) if str(z.get("group"))==str(group)),None)\n                if row and row.get("status") in ("positive_forward_evidence","negative_forward_evidence"):\n                    m=float(row.get("weight_multiplier") or 1.0)\n                    learned_multiplier*=m\n                    learned_components.append({"factor":name,"group":str(group),"multiplier":m,"trades":row.get("trades"),"status":row.get("status")})\n            apply_factor("type",c.get("type","unknown"))\n            apply_factor("regime",current_regime)\n            d=c.get("dte")\n            dgroup="unknown" if d is None else ("0-7" if int(d)<=7 else ("8-21" if int(d)<=21 else ("22-45" if int(d)<=45 else "46+")))\n            apply_factor("dte",dgroup)\n            pgroup="65%+" if pp>=.65 else ("60-65%" if pp>=.60 else "<60%")\n            apply_factor("historical_probability",pgroup)\n            ivr=c.get("iv_rv_ratio")\n            ivgroup="unknown" if ivr is None else ("IV<0.9xRV" if float(ivr)<.9 else ("0.9-1.2x" if float(ivr)<=1.2 else "IV>1.2xRV"))\n            apply_factor("iv_environment",ivgroup)\n        # Keep adaptation bounded even if several eligible factors align.\n        learned_multiplier=max(.85,min(1.15,learned_multiplier))\n        score=max(0,min(100,base_score*learned_multiplier))
+        base_score=max(0,min(100,score))
+        learned_multiplier=1.0
+        learned_components=[]
+        lp=learning or {}
+        if lp.get("enabled"):
+            factors=lp.get("factors") or {}
+            def apply_factor(name, group):
+                nonlocal learned_multiplier
+                row=next((z for z in factors.get(name,[]) if str(z.get("group"))==str(group)),None)
+                if row and row.get("status") in ("positive_forward_evidence","negative_forward_evidence"):
+                    m=float(row.get("weight_multiplier") or 1.0)
+                    learned_multiplier*=m
+                    learned_components.append({"factor":name,"group":str(group),"multiplier":m,"trades":row.get("trades"),"status":row.get("status")})
+            apply_factor("type",c.get("type","unknown"))
+            apply_factor("regime",current_regime)
+            d=c.get("dte")
+            dgroup="unknown" if d is None else ("0-7" if int(d)<=7 else ("8-21" if int(d)<=21 else ("22-45" if int(d)<=45 else "46+")))
+            apply_factor("dte",dgroup)
+            pgroup="65%+" if pp>=.65 else ("60-65%" if pp>=.60 else "<60%")
+            apply_factor("historical_probability",pgroup)
+            ivr=c.get("iv_rv_ratio")
+            ivgroup="unknown" if ivr is None else ("IV<0.9xRV" if float(ivr)<.9 else ("0.9-1.2x" if float(ivr)<=1.2 else "IV>1.2xRV"))
+            apply_factor("iv_environment",ivgroup)
+        # Keep adaptation bounded even if several eligible factors align.
+        learned_multiplier=max(.85,min(1.15,learned_multiplier))
+        score=max(0,min(100,base_score*learned_multiplier))
 
         reasons=[]
         risks=[]
@@ -115,6 +140,7 @@ def build_opportunity_radar(raw, contracts, regime_series, current_regime, evide
         "state":"opportunities_detected" if surfaced else "no_strong_setup",
         "opportunities":surfaced,
         "watchlist":watch,
-        "contracts_evaluated":len(rows),\n        "learning_enabled":bool((learning or {}).get("enabled")),
+        "contracts_evaluated":len(rows),
+        "learning_enabled":bool((learning or {}).get("enabled")),
         "method_note":"Today's contract economics replayed across historical underlying moves. Results are hypothetical, exclude changing historical IV/Greeks and are not a profitability guarantee.",
     }
