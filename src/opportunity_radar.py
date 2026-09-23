@@ -34,7 +34,7 @@ def _historical_outcomes(contract, spot, entry, returns):
         "median_return_on_debit":_f(np.median(ret)),
     }
 
-def build_opportunity_radar(raw, contracts, regime_series, current_regime, evidence, spot, limit=12):
+def build_opportunity_radar(raw, contracts, regime_series, current_regime, evidence, spot, limit=12, learning=None):
     """Historical contract screen.
 
     Replays today's strike/premium economics across historical underlying moves.
@@ -79,7 +79,7 @@ def build_opportunity_radar(raw, contracts, regime_series, current_regime, evide
         score += 5 if (oi>=500 or vol>=100) else (2 if (oi>=100 or vol>=20) else -4)
         if stats["samples"]<100:
             score-=8
-        score=max(0,min(100,score))
+        base_score=max(0,min(100,score))\n        learned_multiplier=1.0\n        learned_components=[]\n        lp=learning or {}\n        if lp.get("enabled"):\n            factors=lp.get("factors") or {}\n            def apply_factor(name, group):\n                nonlocal learned_multiplier\n                row=next((z for z in factors.get(name,[]) if str(z.get("group"))==str(group)),None)\n                if row and row.get("status") in ("positive_forward_evidence","negative_forward_evidence"):\n                    m=float(row.get("weight_multiplier") or 1.0)\n                    learned_multiplier*=m\n                    learned_components.append({"factor":name,"group":str(group),"multiplier":m,"trades":row.get("trades"),"status":row.get("status")})\n            apply_factor("type",c.get("type","unknown"))\n            apply_factor("regime",current_regime)\n            d=c.get("dte")\n            dgroup="unknown" if d is None else ("0-7" if int(d)<=7 else ("8-21" if int(d)<=21 else ("22-45" if int(d)<=45 else "46+")))\n            apply_factor("dte",dgroup)\n            pgroup="65%+" if pp>=.65 else ("60-65%" if pp>=.60 else "<60%")\n            apply_factor("historical_probability",pgroup)\n            ivr=c.get("iv_rv_ratio")\n            ivgroup="unknown" if ivr is None else ("IV<0.9xRV" if float(ivr)<.9 else ("0.9-1.2x" if float(ivr)<=1.2 else "IV>1.2xRV"))\n            apply_factor("iv_environment",ivgroup)\n        # Keep adaptation bounded even if several eligible factors align.\n        learned_multiplier=max(.85,min(1.15,learned_multiplier))\n        score=max(0,min(100,base_score*learned_multiplier))
 
         reasons=[]
         risks=[]
@@ -103,7 +103,7 @@ def build_opportunity_radar(raw, contracts, regime_series, current_regime, evide
         rows.append({
             "contract_symbol":c.get("contract_symbol"),"type":c.get("type"),
             "expiration":c.get("expiration"),"dte":c.get("dte"),"strike":c.get("strike"),
-            "entry_quote":_f(entry),"score":round(score,1),"state":state,
+            "entry_quote":_f(entry),"base_score":round(base_score,1),"learned_multiplier":round(learned_multiplier,3),"learned_adjustment_points":round(score-base_score,1),"learning_components":learned_components,"score":round(score,1),"state":state,
             "historical_scope":"same regime" if len(same)>=80 else "all regimes",
             "trading_day_horizon":h,**stats,"reasons":reasons,"risks":risks,
         })
@@ -115,6 +115,6 @@ def build_opportunity_radar(raw, contracts, regime_series, current_regime, evide
         "state":"opportunities_detected" if surfaced else "no_strong_setup",
         "opportunities":surfaced,
         "watchlist":watch,
-        "contracts_evaluated":len(rows),
+        "contracts_evaluated":len(rows),\n        "learning_enabled":bool((learning or {}).get("enabled")),
         "method_note":"Today's contract economics replayed across historical underlying moves. Results are hypothetical, exclude changing historical IV/Greeks and are not a profitability guarantee.",
     }
