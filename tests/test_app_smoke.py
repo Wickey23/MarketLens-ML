@@ -77,3 +77,17 @@ def test_live_quotes_rejects_invalid_list():
     client=market_app.app.test_client()
     r=client.get('/api/live-quotes?tickers=SPY,$BAD')
     assert r.status_code==400
+
+
+def test_live_quote_prefers_provider_when_key_present(monkeypatch):
+    market_app._live_quote_cache.clear()
+    monkeypatch.setenv("FINNHUB_API_KEY","test-key")
+    monkeypatch.setattr(market_app,"_finnhub_live_quote",lambda ticker,key:{
+        "ticker":ticker,"price":200.0,"change_pct":0.02,"provider":"Finnhub quote",
+        "realtime":True,"delayed":False
+    })
+    monkeypatch.setattr(market_app,"_yahoo_live_quote",lambda ticker:(_ for _ in ()).throw(AssertionError("Yahoo fallback should not run")))
+    q=market_app.live_quote("SPY")
+    assert q["price"]==200.0
+    assert q["provider"]=="Finnhub quote"
+    assert q["realtime"] is True
