@@ -40,9 +40,15 @@ def current_contract(pos,tickers):
     return next((x for x in contracts if contract_key(x)==pos["contract_key"]),None)
 
 def mark_position(pos,tickers):
+    """Executable long-option exit mark.
+
+    For realism, use the bid only. A midpoint without a usable bid is not an
+    executable long-option exit and should not create paper profits.
+    """
     q=current_contract(pos,tickers)
     if q:
-        return (q.get("bid") if q.get("bid") and q.get("bid")>0 else q.get("mid"))
+        bid=q.get("bid")
+        return float(bid) if bid is not None and float(bid)>0 else None
     return None
 
 def quote_age_hours(contract, now_dt):
@@ -83,6 +89,7 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
         mark=mark_position(p,tickers)
         pnl_pct=((mark/p["entry_price"])-1) if mark is not None and p["entry_price"]>0 else None
         today=now[:10]
+        remaining=days_to_expiry(p["expiration"],today)
         reason=None
         if p["expiration"]<today:
             reason="expiration"
@@ -95,8 +102,11 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
                     pnl_pct=((mark/p["entry_price"])-1) if p["entry_price"]>0 else None
         elif pnl_pct is not None and pnl_pct>=.50: reason="profit_target"
         elif pnl_pct is not None and pnl_pct<=-.35: reason="risk_limit"
+        elif remaining is not None and remaining<=0:
+            # Apply this to legacy positions too so an older strategy cannot
+            # remain stuck in a same-day-expiry contract indefinitely.
+            reason="time_risk"
         elif p.get("strategy_version")=="v2_conservative":
-            remaining=days_to_expiry(p["expiration"],today)
             if remaining is not None and remaining<=1:
                 reason="time_risk"
             elif pnl_pct is not None and pnl_pct>=.25 and remaining is not None and remaining<=3:
@@ -158,7 +168,7 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
         entry=(q.get("ask") if q.get("ask") and q.get("ask")>0 else q.get("mid"))
         if not entry or entry<=0:
             continue
-        equity=state["cash"]+sum((p.get("last_mark") or p["entry_price"])*100*p["qty"] for p in state["open"])
+        equity=state["cash"]+sum((mark_position(p,tickers) if mark_position(p,tickers) is not None else (p.get("last_mark") if p.get("last_mark") is not None else p["entry_price"]))*100*p["qty"] for p in state["open"])
         budget=min(state["cash"],equity*risk_per_trade)
         qty=int(budget//(entry*100))
         key=contract_key(q)
@@ -180,7 +190,7 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
         state["decisions"].append({"at":now,"ticker":ticker,"contract":key,"action":"paper_buy",
                                    "qty":qty,"price":entry,"score":score,"strategy_version":"v2_conservative"})
 
-    open_value=sum((mark_position(p,tickers) or p["entry_price"])*100*p["qty"] for p in state["open"])
+    open_value=sum((mark_position(p,tickers) if mark_position(p,tickers) is not None else (p.get("last_mark") if p.get("last_mark") is not None else p["entry_price"]))*100*p["qty"] for p in state["open"])
     equity=state["cash"]+open_value
     state["equity_history"].append({"at":now,"equity":equity,"cash":state["cash"],"open_value":open_value})
     state["equity_history"]=state["equity_history"][-1000:]
