@@ -1,7 +1,8 @@
 {
   "starting_cash": 10000,
-  "cash": 9842.0,
-  "open": [
+  "cash": 10015.0,
+  "open": [],
+  "closed": [
     {
       "id": "2026-09-23T17:23:28.433151+00:00:QQQ260923C00738000",
       "ticker": "QQQ",
@@ -36,10 +37,13 @@
       "entry_research_generated_at": "2026-09-23T17:23:28.433018+00:00",
       "last_mark": 1.8,
       "unrealized_pnl": 21.999999999999996,
-      "exit_signal": "hold"
+      "exit_signal": "time_risk",
+      "exit_price": 1.73,
+      "closed_at": "2026-09-23T17:43:38.256358+00:00",
+      "exit_reason": "time_risk",
+      "pnl": 14.999999999999991
     }
   ],
-  "closed": [],
   "equity_history": [
     {
       "at": "2026-09-23T17:23:28.433151+00:00",
@@ -82,6 +86,12 @@
       "equity": 10022.0,
       "cash": 9842.0,
       "open_value": 180.0
+    },
+    {
+      "at": "2026-09-23T17:43:38.256358+00:00",
+      "equity": 10015.0,
+      "cash": 10015.0,
+      "open_value": 0
     }
   ],
   "decisions": [
@@ -224,6 +234,6 @@
       "strategy_version": "v2_conservative"
     }
   ],
-  "updated_at": "2026-09-23T17:41:22.128673+00:00",
-  "last_processed_snapshot": "2026-09-23T17:41:22.128513+00:00"
+  "updated_at": "2026-09-23T17:43:38.256358+00:00",
+  "last_processed_snapshot": "2026-09-23T17:43:38.256169+00:00"
 }
