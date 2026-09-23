@@ -372,28 +372,8 @@ def run_research():
     except urllib.error.HTTPError as e:
         return jsonify({"ok":False,"error":f"GitHub trigger failed ({e.code})"}),502
     except Exception:
-        return jsonify({"ok":False,"error":"GitHub trigger unavailable"}),502function confirmPaperTrade(){
- if(!selectedContract)return;const x=selectedContract,qty=Math.max(1,Number(paperQty.value||1)),ask=(x.ask&&x.ask>0)?x.ask:x.mid,orderType=paperOrderType.value,limit=Number(paperLimit.value||0),s=paperState();let cash=10000;
- s.open.forEach(p=>cash-=p.entry_price*100*p.qty);s.closed.forEach(p=>cash+=p.pnl);
- const px=orderType==='limit'?limit:ask,debit=px*100*qty;if(!px||debit>cash){runStatus.textContent=!px?'Enter a valid limit':'Not enough paper buying power';return}
- const base={id:Date.now(),ticker:C.ticker,type:x.type,strike:x.strike,expiration:x.expiration,contract_symbol:x.contract_symbol||'',qty,entry_spot:C.price,entry_iv:x.iv,entry_delta:x.delta,entry_theta:x.theta_per_contract_per_day,entry_vega:x.vega_per_contract_per_vol_point,entry_spread_pct:x.spread_pct,entry_model_output:C.probability_5d_up,entry_evidence:(C.evidence||{}).state||null};
- if(orderType==='limit'&&ask>limit){s.pending.push({...base,limit_price:limit,created_at:new Date().toISOString(),status:'pending'});runStatus.textContent='Paper limit order queued';}
- else{s.open.push({...base,entry_price:orderType==='limit'?Math.min(ask,limit):ask,opened_at:new Date().toISOString()});runStatus.textContent='Paper order filled ✓';}
- savePaper(s);orderTicket.style.display='none';renderPaper();showView('sim',document.querySelectorAll('.navtabs .tab')[2]);
-}
-function processPending(s){
- s.pending.forEach(o=>{const q=lookupContract(o);if(q&&q.ask!=null&&q.ask<=o.limit_price){o._fill=Math.min(q.ask,o.limit_price)}});
- const fills=s.pending.filter(o=>o._fill!=null);s.pending=s.pending.filter(o=>o._fill==null);fills.forEach(o=>{const {limit_price,created_at,status,_fill,...p}=o;s.open.push({...p,entry_price:_fill,opened_at:new Date().toISOString()})});return fills.length;
-}
-function lookupContract(p){const t=(P.tickers||[]).find(x=>x.ticker===p.ticker);if(!t)return null;return (((t.options||{}).chain||{}).contracts||[]).find(z=>(p.contract_symbol&&z.contract_symbol===p.contract_symbol)||(!p.contract_symbol&&z.type===p.type&&z.strike===p.strike&&z.expiration===p.expiration))||null}
-function cancelPending(id){const s=paperState();s.pending=s.pending.filter(x=>x.id!==id);savePaper(s);renderPaper()}
-function lookupMark(p){
- const t=(P.tickers||[]).find(x=>x.ticker===p.ticker);if(!t)return{mark:null,spot:null};
- const rows=((((t.options||{}).chain||{}).contracts)||[]);const x=rows.find(z=>(p.contract_symbol&&z.contract_symbol===p.contract_symbol)||(!p.contract_symbol&&z.type===p.type&&z.strike===p.strike&&z.expiration===p.expiration));
- if(x)return{mark:(x.bid&&x.bid>0)?x.bid:x.mid,spot:t.price};
- const expired=new Date(p.expiration+'T23:59:59Z')<new Date();if(expired&&t.price!=null){const intrinsic=Math.max(p.type==='call'?t.price-p.strike:p.strike-t.price,0);return{mark:intrinsic,spot:t.price}}
- return{mark:null,spot:t.price};
-}
+        return jsonify({"ok":False,"error":"GitHub trigger unavailable"}),502
+
 function renderPaper(){
  const s=paperState();let unreal=0,real=0,cash=10000;paperOpen.innerHTML='';paperClosed.innerHTML='';
  s.open.forEach(p=>{const q=lookupMark(p),cost=p.entry_price*100*p.qty;cash-=cost;const val=q.mark==null?null:q.mark*100*p.qty,pl=val==null?null:val-cost;if(pl!=null)unreal+=pl;paperOpen.innerHTML+='<tr><td>'+p.ticker+'</td><td>'+p.expiration+' '+money(p.strike)+' '+p.type+'</td><td>'+new Date(p.opened_at).toLocaleDateString()+'</td><td>'+money(p.entry_price)+'</td><td>'+money(q.mark)+'</td><td class="'+(pl==null?'':pl>=0?'good':'bad')+'">'+(pl==null?'—':((pl>=0?'+':'')+money(pl)))+'</td><td>'+money(q.spot)+'</td><td>'+((q.spot==null||p.entry_spot==null)?'—':pc(q.spot/p.entry_spot-1))+'</td><td>'+(p.entry_evidence?esc(p.entry_evidence):'—')+'</td><td><button class="btn" onclick="closePaper('+p.id+')">Close</button></td></tr>'});
