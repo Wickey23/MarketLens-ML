@@ -83,3 +83,42 @@ def test_ai_does_not_mark_with_mid_when_bid_unavailable():
     }
     out=run_ai_paper_portfolio(s,state=state)
     assert out["open"][0]["last_mark"] is None
+
+
+def test_ai_exit_is_logged_in_decision_history():
+    from datetime import date
+    today=date.today().isoformat()
+    s=snap()
+    q=s["tickers"][0]["options"]["chain"]["contracts"][0]
+    q["expiration"]=today
+    q["dte"]=0
+    q["bid"]=1.20
+    state={
+        "starting_cash":10000.0,"cash":9900.0,
+        "open":[{
+            "id":"legacy2","ticker":"ABC","contract_key":"ABC1","type":"call",
+            "strike":100,"expiration":today,"qty":1,"entry_price":1.0,
+            "entry_cost":100.0,"opened_at":"2026-01-01T00:00:00+00:00"
+        }],
+        "closed":[],"equity_history":[],"decisions":[]
+    }
+    out=run_ai_paper_portfolio(s,state=state)
+    assert any(d.get("action")=="paper_exit" and d.get("reason")=="time_risk" for d in out["decisions"])
+
+
+def test_open_equity_marks_zero_when_contract_has_no_bid():
+    s=snap()
+    q=s["tickers"][0]["options"]["chain"]["contracts"][0]
+    q["bid"]=0
+    state={
+        "starting_cash":10000.0,"cash":9900.0,
+        "open":[{
+            "id":"open0","ticker":"ABC","contract_key":"ABC1","type":"call",
+            "strike":100,"expiration":"2099-12-31","qty":1,"entry_price":1.0,
+            "entry_cost":100.0,"opened_at":"2026-01-01T00:00:00+00:00"
+        }],
+        "closed":[],"equity_history":[],"decisions":[]
+    }
+    out=run_ai_paper_portfolio(s,state=state)
+    assert out["equity_history"][-1]["open_value"]==0
+    assert out["equity_history"][-1]["equity"]==9900
