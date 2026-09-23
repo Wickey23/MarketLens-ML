@@ -86,7 +86,7 @@ body{background:radial-gradient(circle at 50% -20%,#10203a 0,transparent 38%),va
 <table><thead><tr><th>Model</th><th>Accuracy</th><th>F1</th><th>ROC AUC</th><th>Brier ↓</th><th>N</th></tr></thead><tbody id="metrics"></tbody></table></section>
 </section>
 
-<section id="optionsView" class="view"><div class="workspaceHead"><div><h2>Options Lab</h2><p class="sub">Compare contract economics, risk and expiration scenarios.</p></div></div><div class="hint"><b>Next:</b> filter calls or puts and an expiration, then choose <b>Analyze</b>. The contract panel explains what you pay, the breakeven, Greeks and scenario risk.</div>
+<section id="optionsView" class="view"><div class="workspaceHead"><div><h2>Options Lab</h2><p class="sub">Compare contract economics, risk and expiration scenarios.</p></div><span class="statusPill" id="liveMarketStatus"><span class="dot"></span>Checking live market…</span></div><div class="hint"><b>Next:</b> filter calls or puts and an expiration, then choose <b>Analyze</b>. The contract panel explains what you pay, the breakeven, Greeks and scenario risk.</div>
 <section class="grid3">
 <div class="card"><div class="label">REALIZED VOL · 20D</div><div class="value" id="optRV">—</div></div>
 <div class="card"><div class="label">NEAREST ATM STRADDLE MOVE</div><div class="value" id="atmMove">—</div><div class="sub" id="atmExp">—</div></div>
@@ -150,9 +150,9 @@ body{background:radial-gradient(circle at 50% -20%,#10203a 0,transparent 38%),va
 </main>
 
 <script>
-let liveQuoteTimer=null,dataSyncTimer=null;
+let liveQuoteTimer=null,dataSyncTimer=null,marketStreamSocket=null,marketStreamSession=null,marketStreamConnected=false,marketStreamReconnect=null,streamRenderTimer=null;
 async function refreshLiveQuote(){
-  if(!C||!C.ticker||document.hidden)return;
+  if(!C||!C.ticker||document.hidden||marketStreamConnected)return;
   const requested=C.ticker;
   const status=document.getElementById('liveQuoteStatus');
   try{
@@ -174,6 +174,118 @@ function startLiveQuotePolling(){
   if(liveQuoteTimer)clearInterval(liveQuoteTimer);
   refreshLiveQuote();
   liveQuoteTimer=setInterval(refreshLiveQuote,15000);
+}
+async function marketStreamSymbols(){
+  if(!C)return[];
+  const rows=((((C.options||{}).chain||{}).contracts)||[]);
+  const optionSymbols=rows.filter(x=>x.contract_symbol&&Number(x.dte||0)>=1&&x.bid!=null&&x.ask!=null).slice(0,60).map(x=>x.contract_symbol);
+  if(selectedContract&&selectedContract.contract_symbol&&!optionSymbols.includes(selectedContract.contract_symbol))optionSymbols.unshift(selectedContract.contract_symbol);
+  return [C.ticker,...optionSymbols].slice(0,61);
+}
+function scheduleStreamRender(){
+  if(streamRenderTimer)return;
+  streamRenderTimer=setTimeout(()=>{
+    streamRenderTimer=null;
+    if(C){renderResearch();renderChain();refreshSelectedContractLiveStats();}
+  },250);
+}
+function applyMarketStreamEvent(e){
+  if(!e||!C||!e.symbol)return;
+  if(e.symbol===C.ticker){
+    if(e.type==='trade'||e.type==='tradex'||e.type==='timesale'){
+      const px=Number(e.last!=null?e.last:e.price);
+      if(Number.isFinite(px)&&px>0)C.live_price=px;
+      const ms=Number(e.date||Date.now());
+      C.live_quote_time=new Date(ms).toISOString();
+      C.live_quote_provider='Tradier streaming';
+    }
+    if(e.type==='quote'){
+      const bid=Number(e.bid),ask=Number(e.ask);
+      if(Number.isFinite(bid))C.live_bid=bid;
+      if(Number.isFinite(ask))C.live_ask=ask;
+    }
+    scheduleStreamRender();
+    return;
+  }
+  const rows=((((C.options||{}).chain||{}).contracts)||[]);
+  const x=rows.find(z=>z.contract_symbol===e.symbol);
+  if(!x)return;
+  if(e.type==='quote'){
+    const bid=Number(e.bid),ask=Number(e.ask);
+    if(Number.isFinite(bid)&&bid>=0)x.bid=bid;
+    if(Number.isFinite(ask)&&ask>=0)x.ask=ask;
+    if(Number.isFinite(x.bid)&&Number.isFinite(x.ask)&&x.ask>=x.bid){
+      x.mid=(x.bid+x.ask)/2;
+      x.spread_pct=x.mid>0?(x.ask-x.bid)/x.mid:null;
+    }
+    x.quote_age_hours=0;
+    x.live_quote=true;
+  }else if(e.type==='trade'||e.type==='tradex'||e.type==='timesale'){
+    const last=Number(e.last!=null?e.last:e.price);
+    if(Number.isFinite(last)&&last>0)x.last=last;
+  }
+  scheduleStreamRender();
+}
+function parseMarketStreamMessage(raw){
+  String(raw||'').split(/\r?\n/).filter(Boolean).forEach(line=>{
+    try{applyMarketStreamEvent(JSON.parse(line))}catch(e){}
+  });
+}
+async function updateMarketStreamSymbols(){
+  if(!marketStreamConnected||!marketStreamSocket||marketStreamSocket.readyState!==WebSocket.OPEN||!marketStreamSession)return;
+  const symbols=await marketStreamSymbols();
+  if(!symbols.length)return;
+  marketStreamSocket.send(JSON.stringify({symbols,filter:['quote','trade','summary'],sessionid:marketStreamSession,linebreak:true,validOnly:true}));
+}
+async function startMarketStream(){
+  const status=document.getElementById('liveMarketStatus');
+  if(marketStreamReconnect){clearTimeout(marketStreamReconnect);marketStreamReconnect=null}
+  try{
+    const r=await fetch('/api/market-stream/session',{method:'POST',cache:'no-store'});
+    const j=await r.json();
+    if(!r.ok||!j.ok){
+      marketStreamConnected=false;
+      if(status)status.innerHTML='<span class="dot" style="background:var(--warn)"></span>Near-live fallback';
+      return;
+    }
+    marketStreamSession=j.sessionid;
+    if(marketStreamSocket)try{marketStreamSocket.close()}catch(e){}
+    const ws=new WebSocket(j.websocket_url);
+    marketStreamSocket=ws;
+    ws.onopen=async()=>{
+      marketStreamConnected=true;
+      if(status)status.innerHTML='<span class="dot"></span>Live stocks + options stream';
+      const liveStatus=document.getElementById('liveQuoteStatus');
+      if(liveStatus)liveStatus.textContent='Live stream connected · Tradier';
+      await updateMarketStreamSymbols();
+    };
+    ws.onmessage=e=>parseMarketStreamMessage(e.data);
+    ws.onerror=()=>{if(status)status.innerHTML='<span class="dot" style="background:var(--warn)"></span>Stream reconnecting…'};
+    ws.onclose=()=>{
+      marketStreamConnected=false;
+      if(status)status.innerHTML='<span class="dot" style="background:var(--warn)"></span>Near-live fallback';
+      if(!document.hidden)marketStreamReconnect=setTimeout(startMarketStream,5000);
+    };
+  }catch(e){
+    marketStreamConnected=false;
+    if(status)status.innerHTML='<span class="dot" style="background:var(--warn)"></span>Near-live fallback';
+  }
+}
+function refreshSelectedContractLiveStats(){
+  if(!selectedContract||!contractPanel.classList.contains('active'))return;
+  const x=selectedContract;
+  contractStats.innerHTML=[
+    ['Bid',money(x.bid)],['Ask',money(x.ask)],['Premium mid',money(x.mid)],['Breakeven',money(x.breakeven)],['IV',pc(x.iv)],
+    ['Delta',num(x.delta,3)],['Theta/day',money(x.theta_per_contract_per_day)],['Vega/1pt',money(x.vega_per_contract_per_vol_point)],['Spread',pc(x.spread_pct)],['Open interest',x.open_interest],
+    ['Max debit',money(x.max_loss_per_contract)],['RV BE estimate',pc(x.historical_vol_prob_breakeven)],['Quote age',x.live_quote?'LIVE':(x.quote_age_hours==null?'—':num(x.quote_age_hours,1)+'h')]
+  ].map(([a,b])=>'<div class="stat"><div class="label">'+a+'</div><div style="margin-top:7px;font-weight:700">'+b+'</div></div>').join('');
+  const debit=(x.ask&&x.ask>0?x.ask:x.mid)||0;
+  tradeMath.innerHTML='<div class="kv"><span>1-contract debit</span><b>'+money(debit*100)+'</b></div>'+
+    '<div class="kv"><span>Maximum loss (long option)</span><b>'+money(debit*100)+'</b></div>'+
+    '<div class="kv"><span>Expiration breakeven</span><b>'+money(x.breakeven)+'</b></div>'+
+    '<div class="kv"><span>Move needed to breakeven</span><b>'+pc(Math.abs(x.breakeven_move||0))+'</b></div>'+
+    '<div class="kv"><span>Modeled theta / day</span><b>'+money(x.theta_per_contract_per_day)+'</b></div>'+
+    '<div class="kv"><span>Theta as % of debit / day</span><b>'+pc(x.theta_cost_pct_per_day)+'</b></div>';
 }
 async function syncResearchSnapshot(){
   if(!P||document.hidden)return;
@@ -259,7 +371,7 @@ async function load(){
 function sel(t,b){
   C=P.tickers.find(x=>x.ticker===t);selectedContract=null;contractPanel.classList.remove('active');
   document.querySelectorAll('.tickerTabs .tab').forEach(x=>x.classList.remove('active'));if(b)b.classList.add('active');
-  tickerInput.value=t;renderResearch();renderOptions();renderPaper();renderReplay();renderAI();startLiveQuotePolling();
+  tickerInput.value=t;renderResearch();renderOptions();renderPaper();renderReplay();renderAI();startLiveQuotePolling();updateMarketStreamSymbols();
 }
 function renderResearch(){
   price.textContent=money(spotNow());returns.textContent='Today '+pc(oneDayNow())+' · research 5D '+pc(C.change_5d);prob.textContent=pc(C.probability_5d_up);
@@ -283,7 +395,7 @@ function renderOptions(){
   optionsRows.innerHTML=Object.entries(o.horizons||{}).map(([h,x])=>'<tr><td>'+h+' days</td><td>'+pc(x.positive_rate)+'</td><td>'+pc(x.median_return)+'</td><td>'+pc(x.p10)+'</td><td>'+pc(x.p25)+'</td><td>'+pc(x.p75)+'</td><td>'+pc(x.p90)+'</td><td>'+pc(x.realized_move_1sd)+'</td></tr>').join('');
   const oc=o.chain||{};chainNote.textContent=oc.quote_note||oc.error||'Awaiting option-chain refresh';
   expFilter.innerHTML='<option value="all">All expirations</option>'+(oc.expirations||[]).map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('');
-  renderChain();
+  renderChain();updateMarketStreamSymbols();
 }
 function contractScore(x){
  if(!x||!x.mid||x.mid<=0||x.dte==null||Number(x.dte)<1||x.bid==null||x.ask==null||Number(x.bid)<=0||Number(x.ask)<=0||Number(x.ask)<Number(x.bid))return null;
@@ -458,7 +570,7 @@ function renderAI(){
 }
 
 function draw(){if(ch)ch.destroy();ch=new Chart(chart,{type:'line',data:{labels:(C.history||[]).map(x=>x.date),datasets:[{label:C.ticker+' close',data:(C.history||[]).map(x=>x.close),borderWidth:2,pointRadius:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#8190a5'}}},scales:{x:{ticks:{color:'#657489',maxTicksLimit:8},grid:{display:false}},y:{ticks:{color:'#657489'},grid:{color:'#151d29'}}}}})}
-load().then(startResearchSync);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden){refreshLiveQuote();syncResearchSnapshot();}});
+load().then(()=>{startResearchSync();startMarketStream();});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){refreshLiveQuote();syncResearchSnapshot();if(marketStreamConnected)updateMarketStreamSymbols();else startMarketStream();}});
 </script>
 </body></html>
