@@ -1,5 +1,14 @@
 name: daily-market-research
 on:
+  push:
+    branches: [main]
+    paths:
+      - "src/export_dashboard.py"
+      - "src/universe_scanner.py"
+      - "src/features.py"
+      - "src/walk_forward.py"
+      - "src/train.py"
+      - ".github/workflows/daily-research.yml"
   workflow_dispatch:
     inputs:
       ticker:
