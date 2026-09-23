@@ -51,6 +51,19 @@ def mark_position(pos,tickers):
         return float(bid) if bid is not None and float(bid)>0 else None
     return None
 
+def valuation_mark(pos,tickers):
+    """Conservative equity mark for an open long option."""
+    q=current_contract(pos,tickers)
+    if q is not None:
+        bid=q.get("bid")
+        try:
+            return max(0.0,float(bid or 0.0))
+        except Exception:
+            return 0.0
+    if pos.get("last_mark") is not None:
+        return float(pos["last_mark"])
+    return float(pos.get("entry_price") or 0.0)
+
 def quote_age_hours(contract, now_dt):
     raw=contract.get("last_trade")
     if not raw:
@@ -118,6 +131,12 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
             p.update({"exit_price":mark,"closed_at":now,"exit_reason":reason,
                       "pnl":(mark-p["entry_price"])*100*p["qty"]})
             state["closed"].append(p)
+            state["decisions"].append({
+                "at":now,"ticker":p["ticker"],"contract":p["contract_key"],
+                "action":"paper_exit","qty":p["qty"],"price":mark,
+                "pnl":p["pnl"],"reason":reason,
+                "strategy_version":p.get("strategy_version","legacy"),
+            })
         else:
             p["last_mark"]=mark
             p["unrealized_pnl"]=((mark-p["entry_price"])*100*p["qty"]) if mark is not None else None
@@ -168,12 +187,12 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
         entry=(q.get("ask") if q.get("ask") and q.get("ask")>0 else q.get("mid"))
         if not entry or entry<=0:
             continue
-        equity=state["cash"]+sum((mark_position(p,tickers) if mark_position(p,tickers) is not None else (p.get("last_mark") if p.get("last_mark") is not None else p["entry_price"]))*100*p["qty"] for p in state["open"])
+        equity=state["cash"]+sum(valuation_mark(p,tickers)*100*p["qty"] for p in state["open"])
         budget=min(state["cash"],equity*risk_per_trade)
         qty=int(budget//(entry*100))
         key=contract_key(q)
         if qty<1:
-            state["decisions"].append({"at":now,"ticker":ticker,"contract":key,"action":"skip","reason":"risk budget below one contract"})
+            state["decisions"].append({"at":now,"ticker":ticker,"contract":key,"action":"skip","reason":"risk budget below one contract","strategy_version":"v2_conservative"})
             continue
         cost=entry*100*qty
         state["cash"]-=cost
@@ -190,10 +209,11 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
         state["decisions"].append({"at":now,"ticker":ticker,"contract":key,"action":"paper_buy",
                                    "qty":qty,"price":entry,"score":score,"strategy_version":"v2_conservative"})
 
-    open_value=sum((mark_position(p,tickers) if mark_position(p,tickers) is not None else (p.get("last_mark") if p.get("last_mark") is not None else p["entry_price"]))*100*p["qty"] for p in state["open"])
+    open_value=sum(valuation_mark(p,tickers)*100*p["qty"] for p in state["open"])
     equity=state["cash"]+open_value
     state["equity_history"].append({"at":now,"equity":equity,"cash":state["cash"],"open_value":open_value})
     state["equity_history"]=state["equity_history"][-1000:]
+    state["decisions"]=state.get("decisions",[])[-2000:]
     state["updated_at"]=now
     state["last_processed_snapshot"]=snapshot_id
     return state
