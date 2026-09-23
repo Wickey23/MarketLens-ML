@@ -17,6 +17,8 @@ _TRIGGER_COOLDOWN_SECONDS = 30
 _LIVE_QUOTE_TTL_SECONDS = 10
 _trigger_last_seen = {}
 _live_quote_cache = {}
+_market_stream_session_cache = {"sessionid": None, "at": 0.0}
+_MARKET_STREAM_SESSION_TTL_SECONDS = 240
 
 
 def read_data():
@@ -275,6 +277,78 @@ def api_live_quotes():
     return response
 
 
+
+
+def _create_tradier_market_session():
+    """Create a short-lived browser-safe Tradier streaming session.
+
+    The long-lived access token never leaves the server. The returned session
+    identifier can be used by the browser to open Tradier's market WebSocket.
+    """
+    token=os.getenv("TRADIER_ACCESS_TOKEN")
+    if not token:
+        return None
+    now=time.monotonic()
+    cached=_market_stream_session_cache.get("sessionid")
+    if cached and now-float(_market_stream_session_cache.get("at") or 0)<_MARKET_STREAM_SESSION_TTL_SECONDS:
+        return cached
+    req=urllib.request.Request(
+        "https://api.tradier.com/v1/markets/events/session",
+        data=b"",
+        method="POST",
+        headers={
+            "Authorization":f"Bearer {token}",
+            "Accept":"application/json",
+            "User-Agent":"MarketLens-ML/1.0",
+        },
+    )
+    with urllib.request.urlopen(req,timeout=8) as response:
+        body=json.loads(response.read().decode("utf-8"))
+    stream=body.get("stream") or {}
+    sessionid=stream.get("sessionid")
+    if not sessionid:
+        raise ValueError("Tradier did not return a market streaming session")
+    _market_stream_session_cache["sessionid"]=sessionid
+    _market_stream_session_cache["at"]=now
+    return sessionid
+
+
+@app.get("/api/market-stream/status")
+def market_stream_status():
+    configured=bool(os.getenv("TRADIER_ACCESS_TOKEN"))
+    return jsonify({
+        "configured":configured,
+        "provider":"tradier" if configured else "polling-fallback",
+        "mode":"websocket" if configured else "near-live-polling",
+        "stocks":"real-time with eligible Tradier brokerage data access" if configured else "near-live Yahoo/Finnhub overlay",
+        "options":"real-time with eligible Tradier brokerage data access" if configured else "scheduled snapshot",
+    })
+
+
+@app.post("/api/market-stream/session")
+def market_stream_session():
+    if not os.getenv("TRADIER_ACCESS_TOKEN"):
+        return jsonify({
+            "ok":False,
+            "error":"Streaming provider is not configured",
+            "required_env":"TRADIER_ACCESS_TOKEN",
+            "fallback":"MarketLens will continue using the near-live polling overlay and scheduled option snapshots.",
+        }),503
+    try:
+        sessionid=_create_tradier_market_session()
+        return jsonify({
+            "ok":True,
+            "provider":"Tradier",
+            "sessionid":sessionid,
+            "websocket_url":"wss://ws.tradier.com/v1/markets/events",
+            "filters":["quote","trade","summary"],
+            "note":"Real-time availability depends on the data entitlements of the configured Tradier brokerage account.",
+        })
+    except urllib.error.HTTPError as exc:
+        return jsonify({"ok":False,"error":f"Tradier streaming session failed ({exc.code})"}),502
+    except Exception:
+        return jsonify({"ok":False,"error":"Tradier streaming session unavailable"}),502
+
 @app.get("/api/health")
 def health():
     return jsonify(
@@ -284,7 +358,8 @@ def health():
             "commit": os.getenv("VERCEL_GIT_COMMIT_SHA"),
             "data_branch": "market-data",
             "live_quote_ttl_seconds": _LIVE_QUOTE_TTL_SECONDS,
-            "live_provider": "finnhub" if os.getenv("FINNHUB_API_KEY") else "yahoo-fallback",
+            "live_provider": ("tradier-stream" if os.getenv("TRADIER_ACCESS_TOKEN") else ("finnhub" if os.getenv("FINNHUB_API_KEY") else "yahoo-fallback")),
+            "market_stream_configured": bool(os.getenv("TRADIER_ACCESS_TOKEN")),
         }
     )
 
