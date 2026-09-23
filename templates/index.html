@@ -36,6 +36,8 @@ body{background:radial-gradient(circle at 50% -20%,#10203a 0,transparent 38%),va
 
 /* workspace polish */
 .workspaceHead{display:flex;justify-content:space-between;align-items:end;gap:16px;margin:22px 0 10px}.workspaceHead h2{font-size:21px;margin:0}.snapshot{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:10px 0 16px}.snap{background:#09111b;border:1px solid var(--l);border-radius:11px;padding:11px 13px}.snap strong{display:block;font-size:16px;margin-top:5px}.nextAction{display:flex;justify-content:space-between;align-items:center;gap:12px;background:linear-gradient(100deg,rgba(32,91,158,.18),rgba(9,17,27,.8));border:1px solid #214b7b;border-radius:13px;padding:13px 15px;margin:12px 0}.statusPill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--l);border-radius:999px;padding:5px 9px;font-size:10px;color:var(--m)}.dot{width:7px;height:7px;border-radius:50%;background:var(--good)}@media(max-width:760px){.snapshot{grid-template-columns:1fr 1fr}.nextAction{align-items:flex-start;flex-direction:column}.nextAction .btn{width:100%}}
+
+.returnOutlook{margin-top:12px}.outlookGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}.outlookCard{background:#09111b;border:1px solid var(--l);border-radius:12px;padding:14px}.outlookCard h3{font-size:14px;margin:4px 0 8px}.outlookMetric{font-size:22px;font-weight:780;margin:5px 0}.outlookBand{font-size:11px;color:var(--m);line-height:1.5}.outlookCard .btn{margin-top:10px}.lensTag{display:inline-block;border:1px solid #29496f;border-radius:999px;padding:4px 7px;font-size:9px;color:#9fc2ff;text-transform:uppercase;letter-spacing:.06em}@media(max-width:900px){.outlookGrid{grid-template-columns:1fr}}
 </style>
 </head>
 <body><main class="w">
@@ -94,7 +96,7 @@ body{background:radial-gradient(circle at 50% -20%,#10203a 0,transparent 38%),va
 </section>
 <section class="box table"><div class="label">UNDERLYING HISTORICAL DISTRIBUTION</div><div class="sub" id="optstatus">—</div>
 <table><thead><tr><th>Horizon</th><th>Positive rate</th><th>Median</th><th>10th pct</th><th>25th pct</th><th>75th pct</th><th>90th pct</th><th>1σ move</th></tr></thead><tbody id="optionsRows"></tbody></table></section>
-<section class="box" id="bestOptionBox"><div class="label">FACT-BASED CONTRACT HIGHLIGHT</div><div class="sub">Loading contract screen…</div></section>
+<section class="box returnOutlook"><div class="label">RETURN OUTLOOK · HISTORICAL REPLAY</div><div class="sub">Three research lenses for comparing option upside and risk. These are hypothetical historical replays using today's contract economics, not guaranteed future returns.</div><div class="outlookGrid" id="returnOutlook"><div class="empty">Waiting for Opportunity Radar data…</div></div></section><section class="box" id="bestOptionBox"><div class="label">FACT-BASED CONTRACT HIGHLIGHT</div><div class="sub">Loading contract screen…</div></section>
 <section class="box table">
 <div class="controls"><div><div class="label">OPTION CHAIN</div><div class="sub" id="chainNote">—</div></div>
 <select id="typeFilter" class="select" onchange="renderChain()"><option value="all">Calls + puts</option><option value="call">Calls</option><option value="put">Puts</option></select>
@@ -388,6 +390,46 @@ function renderResearch(){
   metrics.innerHTML=(C.metrics||[]).map(m=>'<tr><td>'+esc(m.model.replaceAll('_',' '))+'</td><td>'+pc(m.accuracy)+'</td><td>'+pc(m.f1)+'</td><td>'+num(m.roc_auc,3)+'</td><td>'+num(m.brier,3)+'</td><td>'+m.observations+'</td></tr>').join('');
   draw();
 }
+
+function radarCandidates(){
+  const r=((C.options||{}).opportunity_radar)||{};
+  const all=[...(r.opportunities||[]),...(r.watchlist||[])],seen=new Set();
+  return all.filter(x=>{const k=x.contract_symbol||[x.type,x.expiration,x.strike].join('|');if(seen.has(k))return false;seen.add(k);return true})
+    .filter(x=>Number(x.dte||0)>=2&&x.entry_quote!=null&&x.samples>=80);
+}
+function analyzeRadarCandidate(sym){
+  const x=radarCandidates().find(z=>z.contract_symbol===sym);
+  if(!x)return;
+  selectContract(x.contract_symbol||'',Number(x.strike),x.type,x.expiration);
+}
+function renderReturnOutlook(){
+  const el=document.getElementById('returnOutlook');if(!el||!C)return;
+  const rows=radarCandidates();
+  if(!rows.length){el.innerHTML='<div class="empty">No option currently has enough quality history for a return outlook. That is a valid no-trade result.</div>';return}
+  const byBalance=[...rows].sort((a,b)=>(b.score||0)-(a.score||0))[0];
+  const byReturn=[...rows].filter(x=>x.expected_return_on_debit!=null).sort((a,b)=>b.expected_return_on_debit-a.expected_return_on_debit)[0];
+  const byProb=[...rows].filter(x=>x.prob_profit!=null).sort((a,b)=>b.prob_profit-a.prob_profit)[0];
+  const picks=[
+    ['Best balance',byBalance,'Highest combined quality score across historical payoff, execution, decay and liquidity.'],
+    ['Highest historical mean return',byReturn,'Highest mean return-on-debit in the historical replay among currently screened contracts.'],
+    ['Highest historical profit frequency',byProb,'Highest share of historical replay outcomes finishing above breakeven.']
+  ].filter(x=>x[1]);
+  el.innerHTML=picks.map(([lens,x,why])=>{
+    const ci=x.prob_profit_ci95||[null,null];
+    const band=(x.p10_pnl_per_contract==null||x.p90_pnl_per_contract==null)?'—':money(x.p10_pnl_per_contract)+' to '+money(x.p90_pnl_per_contract);
+    const ciText=(ci[0]==null||ci[1]==null)?'—':pc(ci[0])+'–'+pc(ci[1]);
+    return '<div class="outlookCard"><span class="lensTag">'+esc(lens)+'</span><h3>'+esc(C.ticker)+' '+esc(x.expiration)+' '+money(x.strike)+' '+esc(String(x.type||'').toUpperCase())+'</h3>'+
+      '<div class="outlookMetric">'+pc(x.expected_return_on_debit)+'</div><div class="sub">Historical mean return on debit</div>'+
+      '<div class="kv"><span>Profit frequency</span><b>'+pc(x.prob_profit)+'</b></div>'+
+      '<div class="kv"><span>95% interval</span><b>'+ciText+'</b></div>'+
+      '<div class="kv"><span>Median P/L</span><b>'+money(x.median_pnl_per_contract)+'</b></div>'+
+      '<div class="kv"><span>10th–90th P/L band</span><b>'+band+'</b></div>'+
+      '<div class="kv"><span>Full-premium-loss frequency</span><b>'+pc(x.prob_total_premium_loss)+'</b></div>'+
+      '<div class="outlookBand">'+esc(why)+' '+esc((x.reasons||[]).join(' · '))+'</div>'+
+      '<button class="btn radarAnalyzeBtn" data-sym="'+esc(x.contract_symbol||'')+'">Analyze this contract</button></div>';
+  }).join('');
+  el.querySelectorAll('.radarAnalyzeBtn').forEach(btn=>btn.onclick=()=>analyzeRadarCandidate(btn.dataset.sym));
+}
 function renderOptions(){
   const o=C.options||{},sum=o.summary||{},ctx=C.company_context||{},er=ctx.earnings||{};
   optRV.textContent=pc(o.realized_vol_20d);atmMove.textContent=pc(sum.atm_straddle_implied_move);atmExp.textContent=sum.atm_expiration?('Nearest reference expiration '+sum.atm_expiration):'Awaiting chain';optEarnings.textContent=er.days_to_earnings==null?'—':er.days_to_earnings+' days';
@@ -395,7 +437,7 @@ function renderOptions(){
   optionsRows.innerHTML=Object.entries(o.horizons||{}).map(([h,x])=>'<tr><td>'+h+' days</td><td>'+pc(x.positive_rate)+'</td><td>'+pc(x.median_return)+'</td><td>'+pc(x.p10)+'</td><td>'+pc(x.p25)+'</td><td>'+pc(x.p75)+'</td><td>'+pc(x.p90)+'</td><td>'+pc(x.realized_move_1sd)+'</td></tr>').join('');
   const oc=o.chain||{};chainNote.textContent=oc.quote_note||oc.error||'Awaiting option-chain refresh';
   expFilter.innerHTML='<option value="all">All expirations</option>'+(oc.expirations||[]).map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('');
-  renderChain();updateMarketStreamSymbols();
+  renderChain();renderReturnOutlook();updateMarketStreamSymbols();
 }
 function contractScore(x){
  if(!x||!x.mid||x.mid<=0||x.dte==null||Number(x.dte)<1||x.bid==null||x.ask==null||Number(x.bid)<=0||Number(x.ask)<=0||Number(x.ask)<Number(x.bid))return null;
