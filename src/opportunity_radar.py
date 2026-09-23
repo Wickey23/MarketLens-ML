@@ -11,6 +11,15 @@ def _f(x):
     except Exception:
         return None
 
+def _wilson(k,n,z=1.96):
+    if not n:
+        return [None,None]
+    p=k/n
+    d=1+z*z/n
+    center=(p+z*z/(2*n))/d
+    half=z*math.sqrt((p*(1-p)+z*z/(4*n))/n)/d
+    return [_f(center-half),_f(center+half)]
+
 def _historical_outcomes(contract, spot, entry, returns):
     if entry <= 0 or returns.empty:
         return {}
@@ -22,13 +31,18 @@ def _historical_outcomes(contract, spot, entry, returns):
         intrinsic=np.maximum(strike-terminal,0.0)
     pnl=(intrinsic-entry)*100.0
     ret=(intrinsic-entry)/entry
+    n=int(len(pnl))
+    wins=int(np.sum(pnl>0))
     return {
-        "samples":int(len(pnl)),
-        "prob_profit":_f(np.mean(pnl>0)),
+        "samples":n,
+        "prob_profit":_f(wins/n),
+        "prob_profit_ci95":_wilson(wins,n),
         "prob_total_premium_loss":_f(np.mean(intrinsic<=0)),
         "expected_pnl_per_contract":_f(np.mean(pnl)),
         "median_pnl_per_contract":_f(np.median(pnl)),
         "p10_pnl_per_contract":_f(np.quantile(pnl,.10)),
+        "p25_pnl_per_contract":_f(np.quantile(pnl,.25)),
+        "p75_pnl_per_contract":_f(np.quantile(pnl,.75)),
         "p90_pnl_per_contract":_f(np.quantile(pnl,.90)),
         "expected_return_on_debit":_f(np.mean(ret)),
         "median_return_on_debit":_f(np.median(ret)),
