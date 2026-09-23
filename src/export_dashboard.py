@@ -17,6 +17,7 @@ from src.options_data import option_snapshot
 from src.regime import classify_regime
 from src.opportunity_radar import build_opportunity_radar
 from src.ai_paper_trader import load_state, save_state, run_ai_paper_portfolio, performance_summary, performance_attribution, learning_profile
+from src.universe_scanner import choose_research_universe
 from src.train import FEATURES
 from src.walk_forward import expanding_predictions, model_library
 
@@ -354,13 +355,21 @@ def main():
     requested=(os.getenv("MARKETLENS_TICKER") or "").strip().upper()
     p=load_existing()
     tracked=[x.get("ticker") for x in p.get("tickers",[]) if x.get("ticker")]
+    prior_scan=set(((p.get("universe_scan") or {}).get("selected") or []))
+    manual=list(dict.fromkeys(p.get("manual_tickers") or [
+        t for t in tracked if t not in DEFAULT_TICKERS and t not in prior_scan
+    ]))
+    if requested and requested not in DEFAULT_TICKERS and requested not in manual:
+        manual.append(requested)
+    p["manual_tickers"]=manual[:8]
+
     if requested:
         tickers=[requested]
         p["errors"]=[e for e in p.get("errors",[]) if e.get("ticker")!=requested]
     else:
-        # Preserve and refresh user-added symbols rather than dropping them
-        # at the end-of-day research run. Cap automatic work to 12 symbols.
-        tickers=list(dict.fromkeys(DEFAULT_TICKERS+tracked))[:12]
+        scan=choose_research_universe(DEFAULT_TICKERS,p["manual_tickers"],max_total=12)
+        p["universe_scan"]=scan
+        tickers=scan["selected"]
         p["errors"]=[]
 
     by_ticker={x["ticker"]:x for x in p.get("tickers",[]) if x.get("ticker")}
@@ -370,7 +379,10 @@ def main():
         except Exception as e:
             p.setdefault("errors",[]).append({"ticker":t,"error":str(e)})
 
-    p["tickers"]=list(by_ticker.values())
+    if requested:
+        p["tickers"]=list(by_ticker.values())
+    else:
+        p["tickers"]=[by_ticker[t] for t in tickers if t in by_ticker]
     p["generated_at"]=datetime.now(timezone.utc).isoformat()
     p["horizon_days"]=HORIZON
     ai_state=run_ai_paper_portfolio(p,load_state())
@@ -378,7 +390,7 @@ def main():
     p["ai_portfolio"]={"summary":performance_summary(ai_state),"attribution":performance_attribution(ai_state),"learning":learning_profile(ai_state),"updated_at":ai_state.get("updated_at"),"open":ai_state.get("open",[]),"closed":ai_state.get("closed",[])[-100:],"decisions":ai_state.get("decisions",[])[-100:],"equity_history":ai_state.get("equity_history",[])[-300:]}
     DATA_PATH.parent.mkdir(exist_ok=True)
     DATA_PATH.write_text(json.dumps(p,indent=2),encoding="utf-8")
-    print(json.dumps({"tickers":[x["ticker"] for x in p["tickers"]],"errors":p["errors"]},indent=2))
+    print(json.dumps({"tickers":[x["ticker"] for x in p["tickers"]],"universe_scan":p.get("universe_scan"),"errors":p["errors"]},indent=2))
 
 
 if __name__=="__main__":
