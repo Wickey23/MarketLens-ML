@@ -118,15 +118,19 @@ def build_opportunity_radar(raw, contracts, regime_series, current_regime, evide
         if stats["samples"]<100: risks.append("Historical sample is limited")
         dte=c.get("dte")
         iv=c.get("iv")
+        bid=c.get("bid")
+        ask=c.get("ask")
         if dte is None or int(dte)<2: risks.append("Near-expiry contracts are excluded from strong-opportunity status")
         if iv is not None and (float(iv)<.03 or float(iv)>5.0): risks.append("Implied volatility input appears unreliable for screening")
+        if bid is None or ask is None or float(bid)<=0 or float(ask)<=0 or float(ask)<float(bid): risks.append("Two-sided executable quote is unavailable")
         if (evidence or {}).get("mean_roc_auc") is None or (evidence or {}).get("mean_roc_auc",0)<.53:
             risks.append("Directional ML model has not demonstrated strong out-of-sample discrimination")
 
         state="watch"
         hard_quality_gate=(dte is None or int(dte)<2 or (spread is not None and spread>.20)
                            or (theta is not None and theta>.05)
-                           or (iv is not None and (float(iv)<.03 or float(iv)>5.0)))
+                           or (iv is not None and (float(iv)<.03 or float(iv)>5.0))
+                           or bid is None or ask is None or float(bid)<=0 or float(ask)<=0 or float(ask)<float(bid))
         if not hard_quality_gate and score>=72 and pp>=.58 and ev is not None and ev>0 and stats["samples"]>=100:
             state="investigate"
         elif score<55 or ev is None or ev<=0:
