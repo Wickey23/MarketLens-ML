@@ -135,13 +135,14 @@ def plain_language(ticker,evidence,ctx,options,rel):
     else:
         notes.append("The directional model has shown stronger historical discrimination than the current baseline models.")
 
+    lift_ci=evidence.get("historical_lift_ci95") or [None,None]
     if lift is not None:
-        if lift>.03:
-            notes.append("Comparable historical signals finished higher more often than the ticker's normal base rate.")
-        elif lift<-.03:
-            notes.append("Comparable historical signals underperformed the ticker's normal base rate.")
+        if lift_ci[0] is not None and lift_ci[0]>0:
+            notes.append("Comparable historical signals finished higher more often than the ticker's base rate, and the 95% interval stayed above that base rate.")
+        elif lift_ci[1] is not None and lift_ci[1]<0:
+            notes.append("Comparable historical signals underperformed the ticker's base rate, and the 95% interval stayed below that base rate.")
         else:
-            notes.append("Comparable historical signals were close to the ticker's normal base rate, so the current signal adds little directional evidence.")
+            notes.append("Comparable historical signals are not clearly separated from the ticker's normal base rate, so the current signal adds limited directional evidence.")
 
     dte=(ctx.get("earnings") or {}).get("days_to_earnings")
     if dte is not None:
@@ -241,15 +242,24 @@ def analyze(ticker,learning=None):
     else:
         quality="Weak historical discrimination"
 
+    lift_ci=[None,None]
+    if base is not None and sn:
+        up_ci=similar.get("up_rate_ci95") or [None,None]
+        lift_ci=[
+            sf(up_ci[0]-base) if up_ci[0] is not None else None,
+            sf(up_ci[1]-base) if up_ci[1] is not None else None,
+        ]
+
     evidence={
         "validation_quality":quality,
         "mean_roc_auc":mean_auc,
         "model_agreement":agreement,
         "historical_lift":lift,
+        "historical_lift_ci95":lift_ci,
         "similar_sample_size":sn,
         "notes":[
             "Model output is not a calibrated real-world probability.",
-            "Compare signal lift with the unconditional base rate.",
+            "Compare signal lift with the unconditional base rate and its uncertainty interval.",
             "Give more weight to signals only when validation and sample size support them.",
         ],
     }
@@ -257,12 +267,12 @@ def analyze(ticker,learning=None):
         evidence["state"]="Insufficient validated edge"
     elif sn<100:
         evidence["state"]="Limited comparable history"
-    elif lift is not None and lift>0:
+    elif lift_ci[0] is not None and lift_ci[0]>0:
         evidence["state"]="Historically favorable setup"
-    elif lift is not None and lift<0:
+    elif lift_ci[1] is not None and lift_ci[1]<0:
         evidence["state"]="Historically unfavorable setup"
     else:
-        evidence["state"]="Historically neutral setup"
+        evidence["state"]="Historically uncertain setup"
 
     close=raw["Close"]
     daily=close.pct_change()
