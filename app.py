@@ -197,10 +197,18 @@ async function reloadData(selectTicker=null){
   return old!==P.generated_at;
 }
 async function load(){
-  const r=await fetch('/api/data',{cache:'no-store'});P=await r.json();
-  updated.textContent='Updated '+new Date(P.generated_at).toLocaleString();tabs.innerHTML='';
-  (P.tickers||[]).forEach((x,i)=>{const b=document.createElement('button');b.className='tab'+(i?'':' active');b.textContent=x.ticker;b.onclick=()=>sel(x.ticker,b);tabs.appendChild(b)});
-  if(P.tickers&&P.tickers.length)sel(P.tickers[0].ticker,tabs.children[0]); else updated.textContent='Waiting for research data';
+  try{
+    const r=await fetch('/api/data',{cache:'no-store'});
+    if(!r.ok)throw new Error('Data request '+r.status);
+    P=await r.json();
+    updated.textContent='Updated '+new Date(P.generated_at).toLocaleString();tabs.innerHTML='';
+    (P.tickers||[]).forEach((x,i)=>{const b=document.createElement('button');b.className='tab'+(i?'':' active');b.textContent=x.ticker;b.onclick=()=>sel(x.ticker,b);tabs.appendChild(b)});
+    if(P.tickers&&P.tickers.length)sel(P.tickers[0].ticker,tabs.children[0]); else updated.textContent='Waiting for research data';
+  }catch(e){
+    updated.textContent='Data unavailable';
+    runStatus.textContent='Retrying data…';
+    setTimeout(load,5000);
+  }
 }
 function sel(t,b){
   C=P.tickers.find(x=>x.ticker===t);selectedContract=null;contractPanel.classList.remove('active');
