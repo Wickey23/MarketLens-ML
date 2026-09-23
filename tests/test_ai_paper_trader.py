@@ -1,8 +1,9 @@
+from datetime import datetime, timezone
 from src.ai_paper_trader import run_ai_paper_portfolio, performance_summary
 
 def snap():
     q={"contract_symbol":"ABC1","type":"call","expiration":"2099-12-31","dte":14,"strike":100,
-       "ask":1.0,"bid":.95,"mid":.975}
+       "ask":1.0,"bid":.95,"mid":.975,"iv":.25,"spread_pct":.05,"theta_cost_pct_per_day":.01,"last_trade":datetime.now(timezone.utc).isoformat()}
     r={"contract_symbol":"ABC1","type":"call","expiration":"2099-12-31","dte":14,"strike":100,
        "score":80,"prob_profit":.62,"expected_pnl_per_contract":18,"historical_scope":"same regime",
        "reasons":["test"],"risks":[]}
@@ -30,3 +31,12 @@ def test_ai_rejects_zero_dte_autonomous_entry():
     out=run_ai_paper_portfolio(s,state=state)
     assert out["open"]==[]
     assert any(d.get("action")=="skip" and "DTE outside autonomous policy" in d.get("reason","") for d in out["decisions"])
+
+
+def test_ai_rejects_stale_quote():
+    s=snap()
+    s["tickers"][0]["options"]["chain"]["contracts"][0]["last_trade"]="2020-01-01T00:00:00+00:00"
+    state={"starting_cash":10000.0,"cash":10000.0,"open":[],"closed":[],"equity_history":[],"decisions":[]}
+    out=run_ai_paper_portfolio(s,state=state)
+    assert out["open"]==[]
+    assert any("stale" in d.get("reason","") for d in out["decisions"])
