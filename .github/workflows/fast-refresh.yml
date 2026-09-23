@@ -13,8 +13,8 @@ permissions:
   contents: write
 
 concurrency:
-  group: fast-market-refresh-${{ github.event.inputs.ticker || 'core' }}
-  cancel-in-progress: true
+  group: fast-market-refresh
+  cancel-in-progress: false
 
 jobs:
   refresh:
