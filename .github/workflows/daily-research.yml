@@ -33,7 +33,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f data/dashboard.json
+          git stash push --keep-index --include-untracked -m marketlens-generated || true
           git pull --rebase
+          git stash pop || true
           git add -f data/dashboard.json
           git diff --cached --quiet || git commit -m "Update MarketLens research data"
           git push
