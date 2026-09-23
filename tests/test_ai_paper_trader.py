@@ -122,3 +122,27 @@ def test_open_equity_marks_zero_when_contract_has_no_bid():
     out=run_ai_paper_portfolio(s,state=state)
     assert out["equity_history"][-1]["open_value"]==0
     assert out["equity_history"][-1]["equity"]==9900
+
+
+def test_ai_uses_guided_best_overall_contract():
+    s=snap()
+    q2={
+        "contract_symbol":"ABC2","type":"call","expiration":"2099-12-31","dte":21,"strike":105,
+        "ask":0.8,"bid":0.75,"mid":0.775,"iv":0.25,"spread_pct":0.065,
+        "theta_cost_pct_per_day":0.01,"last_trade":datetime.now(timezone.utc).isoformat()
+    }
+    r2={
+        "contract_symbol":"ABC2","type":"call","expiration":"2099-12-31","dte":21,"strike":105,
+        "score":76,"combined_evidence_score":84,"prob_profit":0.64,
+        "expected_pnl_per_contract":22,"historical_scope":"same regime",
+        "reasons":["guided"],"risks":[]
+    }
+    radar=s["tickers"][0]["options"]["opportunity_radar"]
+    radar["opportunities"].append(r2)
+    radar["guidance"]={"state":"strong_candidates","best_overall":r2}
+    s["tickers"][0]["options"]["chain"]["contracts"].append(q2)
+    state={"starting_cash":10000.0,"cash":10000.0,"open":[],"closed":[],"equity_history":[],"decisions":[]}
+    out=run_ai_paper_portfolio(s,state=state)
+    assert len(out["open"])==1
+    assert out["open"][0]["contract_key"]=="ABC2"
+    assert out["open"][0]["entry_combined_evidence_score"]==84
