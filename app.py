@@ -101,7 +101,7 @@ table{width:100%;border-collapse:collapse;font-size:12px;min-width:900px}th,td{t
 <table><thead><tr><th></th><th>Type</th><th>Exp</th><th>DTE</th><th>Strike</th><th>Bid</th><th>Ask</th><th>Mid</th><th>IV</th><th>Delta</th><th>Gamma</th><th>Theta/day*</th><th>Vega/1pt*</th><th>Breakeven</th><th>BE move</th><th>OI</th><th>Volume</th><th>Spread</th></tr></thead><tbody id="chainRows"></tbody></table>
 </section>
 <section id="contractPanel" class="box contractPanel">
-<div class="controls"><div><div class="label">CONTRACT ANALYZER</div><div class="value" id="contractTitle" style="font-size:21px">—</div></div><select id="paperQty" class="select"><option>1</option><option>2</option><option>3</option><option>5</option><option>10</option></select><button class="btn primary" onclick="paperTrade()">Review paper order</button></div>\n<div id="orderTicket" class="panel" style="display:none;margin-top:12px"></div>
+<div class="controls"><div><div class="label">CONTRACT ANALYZER</div><div class="value" id="contractTitle" style="font-size:21px">—</div></div><select id="paperQty" class="select"><option>1</option><option>2</option><option>3</option><option>5</option><option>10</option></select><select id="paperOrderType" class="select" onchange="toggleLimit()"><option value="market">Market</option><option value="limit">Limit</option></select><input id="paperLimit" class="input" style="display:none;min-width:100px;width:110px" type="number" min="0.01" step="0.01" placeholder="Limit $"><button class="btn primary" onclick="paperTrade()">Review paper order</button></div>\n<div id="orderTicket" class="panel" style="display:none;margin-top:12px"></div>
 <div class="statline" id="contractStats"></div>
 <div class="grid2" style="margin-top:12px"><div class="panel"><div class="label">CONTRACT CHECKLIST</div><div id="contractChecks"></div></div><div class="panel"><div class="label">TRADE MATH AT EXPIRATION</div><div id="tradeMath"></div></div></div>
 <div class="grid2" style="margin-top:12px">
@@ -124,7 +124,7 @@ table{width:100%;border-collapse:collapse;font-size:12px;min-width:900px}th,td{t
 </section>
 <section class="box table"><div class="controls"><div><div class="label">OPEN PAPER POSITIONS</div><div class="sub">Entry uses ask when available; exit/mark uses bid when available. This intentionally includes the quoted spread.</div></div><button class="btn" onclick="resetPaper()">Reset simulator</button></div>
 <table><thead><tr><th>Ticker</th><th>Contract</th><th>Opened</th><th>Entry</th><th>Current exit mark</th><th>P/L</th><th>Underlying</th><th>Underlying move</th><th>Entry context</th><th></th></tr></thead><tbody id="paperOpen"></tbody></table></section>
-<section class="box table"><div class="label">CLOSED PAPER POSITIONS</div>
+<section class="box table"><div class="label">PENDING PAPER ORDERS</div><div class="sub">Limit orders fill when the simulated executable quote reaches your limit.</div><table><thead><tr><th>Ticker</th><th>Contract</th><th>Qty</th><th>Limit</th><th>Current ask</th><th>Status</th><th></th></tr></thead><tbody id="paperPending"></tbody></table></section>\n<section class="box table"><div class="label">CLOSED PAPER POSITIONS</div>
 <table><thead><tr><th>Ticker</th><th>Contract</th><th>Entry</th><th>Exit</th><th>P/L</th><th>Opened</th><th>Closed</th></tr></thead><tbody id="paperClosed"></tbody></table></section>
 <section class="box" style="margin-top:12px"><div class="label">HISTORICAL REPLAY · UNDERLYING ONLY</div><div class="sub">Use this to inspect what happened after an earlier date without pretending we have historical option quotes. Exact option replay requires historical chain data from a dedicated provider.</div>
 <div class="controls" style="margin-top:10px"><select class="select" id="replayDate" onchange="replay()"></select><select class="select" id="replayH" onchange="replay()"><option value="5">5 days</option><option value="10">10 days</option><option value="20">20 days</option><option value="30">30 days</option></select></div>
@@ -268,12 +268,125 @@ function scenario(){
  scenarioValue.textContent='Estimated value '+money(v)+' · P/L '+(pnl>=0?'+':'')+money(pnl);
  scenarioValue.className='value '+(pnl>=0?'good':'bad');scenarioText.textContent='Underlying '+money(S)+' · '+days+' DTE · IV '+pc(iv)+'. Black-Scholes scenario estimate; not a guaranteed quote.';
 }
-function paperState(){try{return JSON.parse(localStorage.getItem('marketlens_paper_v1'))||{open:[],closed:[]}}catch(e){return{open:[],closed:[]}}}
+function paperState(){try{const s=JSON.parse(localStorage.getItem('marketlens_paper_v1'))||{};return{open:s.open||[],closed:s.closed||[],pending:s.pending||[],equityHistory:s.equityHistory||[]}}catch(e){return{open:[],closed:[],pending:[],equityHistory:[]}}}\nfunction toggleLimit(){paperLimit.style.display=paperOrderType.value==='limit'?'block':'none';if(paperOrderType.value==='limit'&&selectedContract)paperLimit.value=num(selectedContract.mid,2)}
 function savePaper(s){localStorage.setItem('marketlens_paper_v1',JSON.stringify(s))}
 function paperTrade(){
  if(!selectedContract)return;const x=selectedContract,s=paperState(),entry=(x.ask&&x.ask>0)?x.ask:x.mid;if(!entry){runStatus.textContent='No usable entry quote';return}
  s.open.push({id:Date.now(),ticker:C.ticker,type:x.type,strike:x.strike,expiration:x.expiration,contract_symbol:x.contract_symbol||'',qty:1,entry_price:entry,entry_spot:C.price,entry_iv:x.iv,entry_delta:x.delta,entry_theta:x.theta_per_contract_per_day,entry_vega:x.vega_per_contract_per_vol_point,entry_spread_pct:x.spread_pct,entry_model_output:C.probability_5d_up,entry_evidence:(C.evidence||{}).state||null,opened_at:new Date().toISOString()});savePaper(s);runStatus.textContent='Paper trade added';renderPaper();
 }
+function lookupMark(p){
+ const t=(P.tickers||[]).find(x=>x.ticker===p.ticker);if(!t)return{mark:null,spot:null};
+ const rows=((((t.options||{}).chain||{}).contracts)||[]);const x=rows.find(z=>(p.contract_symbol&&z.contract_symbol===p.contract_symbol)||(!p.contract_symbol&&z.type===p.type&&z.strike===p.strike&&z.expiration===p.expiration));
+ if(x)return{mark:(x.bid&&x.bid>0)?x.bid:x.mid,spot:t.price};
+ const expired=new Date(p.expiration+'T23:59:59Z')<new Date();if(expired&&t.price!=null){const intrinsic=Math.max(p.type==='call'?t.price-p.strike:p.strike-t.price,0);return{mark:intrinsic,spot:t.price}}
+ return{mark:null,spot:t.price};
+}
+function renderPaper(){
+ const s=paperState();const filled=processPending(s);if(filled)savePaper(s);let unreal=0,real=0,cash=10000;paperOpen.innerHTML='';paperClosed.innerHTML='';paperPending.innerHTML='';
+ s.open.forEach(p=>{const q=lookupMark(p),cost=p.entry_price*100*p.qty;cash-=cost;const val=q.mark==null?null:q.mark*100*p.qty,pl=val==null?null:val-cost;if(pl!=null)unreal+=pl;paperOpen.innerHTML+='<tr><td>'+p.ticker+'</td><td>'+p.expiration+' '+money(p.strike)+' '+p.type+'</td><td>'+new Date(p.opened_at).toLocaleDateString()+'</td><td>'+money(p.entry_price)+'</td><td>'+money(q.mark)+'</td><td class="'+(pl==null?'':pl>=0?'good':'bad')+'">'+(pl==null?'—':((pl>=0?'+':'')+money(pl)))+'</td><td>'+money(q.spot)+'</td><td>'+((q.spot==null||p.entry_spot==null)?'—':pc(q.spot/p.entry_spot-1))+'</td><td>'+(p.entry_evidence?esc(p.entry_evidence):'—')+'</td><td><button class="btn" onclick="closePaper('+p.id+')">Close</button></td></tr>'});
+ s.pending.forEach(p=>{const q=lookupContract(p);paperPending.innerHTML+='<tr><td>'+p.ticker+'</td><td>'+p.expiration+' '+money(p.strike)+' '+p.type+'</td><td>'+p.qty+'</td><td>'+money(p.limit_price)+'</td><td>'+money(q&&q.ask)+'</td><td class="warn">Pending</td><td><button class="btn" onclick="cancelPending('+p.id+')">Cancel</button></td></tr>'});if(!s.pending.length)paperPending.innerHTML='<tr><td colspan="7" class="empty">No pending orders.</td></tr>';\n s.closed.forEach(p=>{real+=p.pnl;cash+=p.pnl;paperClosed.innerHTML+='<tr><td>'+p.ticker+'</td><td>'+p.expiration+' '+money(p.strike)+' '+p.type+'</td><td>'+money(p.entry_price)+'</td><td>'+money(p.exit_price)+'</td><td class="'+(p.pnl>=0?'good':'bad')+'">'+(p.pnl>=0?'+':'')+money(p.pnl)+'</td><td>'+new Date(p.opened_at).toLocaleDateString()+'</td><td>'+new Date(p.closed_at).toLocaleDateString()+'</td></tr>'});
+ const openVal=s.open.reduce((a,p)=>{const q=lookupMark(p);return a+(q.mark==null?0:q.mark*100*p.qty)},0),equity=cash+openVal;
+ paperEquity.textContent=money(equity);paperBuying.textContent=money(cash);paperOptionValue.textContent=money(openVal);paperCount.textContent=s.open.length;paperUnreal.textContent=(unreal>=0?'+':'')+money(unreal);paperReal.textContent=(real>=0?'+':'')+money(real);paperUnreal.className='value '+(unreal>=0?'good':'bad');paperReal.className='value '+(real>=0?'good':'bad');
+ if(!s.open.length)paperOpen.innerHTML='<tr><td colspan="10" class="empty">No open paper positions. Analyze a contract and choose Paper trade.</td></tr>';
+ if(!s.closed.length)paperClosed.innerHTML='<tr><td colspan="7" class="empty">No closed paper positions yet.</td></tr>';\n s.equityHistory.push({t:new Date().toISOString(),equity});if(s.equityHistory.length>300)s.equityHistory=s.equityHistory.slice(-300);savePaper(s);
+}
+function closePaper(id){
+ const s=paperState(),i=s.open.findIndex(x=>x.id===id);if(i<0)return;const p=s.open[i],q=lookupMark(p);if(q.mark==null){runStatus.textContent='No current exit quote';return}
+ p.exit_price=q.mark;p.closed_at=new Date().toISOString();p.pnl=(p.exit_price-p.entry_price)*100*p.qty;s.open.splice(i,1);s.closed.push(p);savePaper(s);renderPaper();
+}
+function resetPaper(){if(confirm('Reset all paper-trading history in this browser?')){localStorage.removeItem('marketlens_paper_v1');renderPaper()}}
+function renderReplay(){
+ const h=C.history||[];replayDate.innerHTML=h.slice(0,-30).reverse().map(x=>'<option value="'+x.date+'">'+x.date+'</option>').join('');replay();
+}
+function replay(){
+ if(!C||!replayDate.value)return;const h=C.history||[],i=h.findIndex(x=>x.date===replayDate.value),n=Number(replayH.value);if(i<0||i+n>=h.length){replayResult.textContent='Not enough subsequent data';replayText.textContent='Choose an earlier date.';return}
+ const a=h[i].close,b=h[i+n].close,r=b/a-1;replayResult.textContent=C.ticker+' '+(r>=0?'+':'')+pc(r)+' over '+n+' trading days';replayResult.className='value '+(r>=0?'good':'bad');replayText.textContent='Underlying moved from '+money(a)+' to '+money(b)+'. This does not reconstruct historical option prices.';
+}
+function draw(){if(ch)ch.destroy();ch=new Chart(chart,{type:'line',data:{labels:(C.history||[]).map(x=>x.date),datasets:[{label:C.ticker+' close',data:(C.history||[]).map(x=>x.close),borderWidth:2,pointRadius:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#8190a5'}}},scales:{x:{ticks:{color:'#657489',maxTicksLimit:8},grid:{display:false}},y:{ticks:{color:'#657489'},grid:{color:'#151d29'}}}}})}
+load();
+</script>
+</body></html>"""
+
+def read_data():
+    # dashboard.json changes much more often than the application deployment.
+    # Read the current main-branch snapshot directly so Vercel never serves
+    # the copy that happened to be bundled at build time.
+    url = "https://raw.githubusercontent.com/Wickey23/MarketLens-ML/main/data/dashboard.json"
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": "MarketLens-ML/1.0", "Cache-Control": "no-cache"},
+        )
+        with urllib.request.urlopen(req, timeout=8) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+            payload["_data_source"] = "github-main-live-v2"
+            return payload
+    except Exception as exc:
+        # Keep the bundled snapshot only as an outage fallback.
+        if DATA.exists():
+            payload = json.loads(DATA.read_text(encoding="utf-8"))
+            payload["_data_source"] = "bundled-fallback"
+            payload["_live_data_error"] = str(exc)
+            return payload
+        return {"generated_at": datetime.now(timezone.utc).isoformat(), "horizon_days": 5, "tickers": [], "errors": ["Live research snapshot unavailable"], "_live_data_error": str(exc)}
+
+@app.get("/")
+def home():
+    return render_template_string(HTML)
+
+@app.get("/api/data")
+def data():
+    response = jsonify(read_data())
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+@app.get("/api/health")
+def health():
+    return jsonify({"status":"ok","time":datetime.now(timezone.utc).isoformat()})
+
+@app.post("/api/run-research")
+def run_research():
+    token=os.getenv("GITHUB_ACTIONS_TOKEN")
+    if not token:
+        return jsonify({"ok":False,"error":"Server trigger is not configured"}),503
+    body=request.get_json(silent=True) or {}
+    ticker=str(body.get("ticker") or "").upper().strip()
+    if ticker and not re.fullmatch(r"[A-Z][A-Z0-9.\-]{0,7}",ticker):
+        return jsonify({"ok":False,"error":"Invalid ticker"}),400
+    payload={"ref":"main"}
+    if ticker:
+        payload["inputs"]={"ticker":ticker}
+    workflow="fast-refresh.yml" if str(body.get("mode") or "fast")!="full" else "daily-research.yml"
+    url=f"https://api.github.com/repos/Wickey23/MarketLens-ML/actions/workflows/{workflow}/dispatches"
+    req=urllib.request.Request(url,data=json.dumps(payload).encode(),method="POST",headers={
+        "Authorization":f"Bearer {token}",
+        "Accept":"application/vnd.github+json",
+        "X-GitHub-Api-Version":"2022-11-28",
+        "User-Agent":"MarketLens-ML",
+    })
+    try:
+        with urllib.request.urlopen(req,timeout=10):
+            return jsonify({"ok":True,"status":"queued","ticker":ticker or None,"workflow":workflow})
+    except urllib.error.HTTPError as e:
+        return jsonify({"ok":False,"error":f"GitHub trigger failed ({e.code})"}),502
+    except Exception:
+        return jsonify({"ok":False,"error":"GitHub trigger unavailable"}),502function confirmPaperTrade(){
+ if(!selectedContract)return;const x=selectedContract,qty=Math.max(1,Number(paperQty.value||1)),ask=(x.ask&&x.ask>0)?x.ask:x.mid,orderType=paperOrderType.value,limit=Number(paperLimit.value||0),s=paperState();let cash=10000;
+ s.open.forEach(p=>cash-=p.entry_price*100*p.qty);s.closed.forEach(p=>cash+=p.pnl);
+ const px=orderType==='limit'?limit:ask,debit=px*100*qty;if(!px||debit>cash){runStatus.textContent=!px?'Enter a valid limit':'Not enough paper buying power';return}
+ const base={id:Date.now(),ticker:C.ticker,type:x.type,strike:x.strike,expiration:x.expiration,contract_symbol:x.contract_symbol||'',qty,entry_spot:C.price,entry_iv:x.iv,entry_delta:x.delta,entry_theta:x.theta_per_contract_per_day,entry_vega:x.vega_per_contract_per_vol_point,entry_spread_pct:x.spread_pct,entry_model_output:C.probability_5d_up,entry_evidence:(C.evidence||{}).state||null};
+ if(orderType==='limit'&&ask>limit){s.pending.push({...base,limit_price:limit,created_at:new Date().toISOString(),status:'pending'});runStatus.textContent='Paper limit order queued';}
+ else{s.open.push({...base,entry_price:orderType==='limit'?Math.min(ask,limit):ask,opened_at:new Date().toISOString()});runStatus.textContent='Paper order filled ✓';}
+ savePaper(s);orderTicket.style.display='none';renderPaper();showView('sim',document.querySelectorAll('.navtabs .tab')[2]);
+}
+function processPending(s){
+ s.pending.forEach(o=>{const q=lookupContract(o);if(q&&q.ask!=null&&q.ask<=o.limit_price){o._fill=Math.min(q.ask,o.limit_price)}});
+ const fills=s.pending.filter(o=>o._fill!=null);s.pending=s.pending.filter(o=>o._fill==null);fills.forEach(o=>{const {limit_price,created_at,status,_fill,...p}=o;s.open.push({...p,entry_price:_fill,opened_at:new Date().toISOString()})});return fills.length;
+}
+function lookupContract(p){const t=(P.tickers||[]).find(x=>x.ticker===p.ticker);if(!t)return null;return (((t.options||{}).chain||{}).contracts||[]).find(z=>(p.contract_symbol&&z.contract_symbol===p.contract_symbol)||(!p.contract_symbol&&z.type===p.type&&z.strike===p.strike&&z.expiration===p.expiration))||null}
+function cancelPending(id){const s=paperState();s.pending=s.pending.filter(x=>x.id!==id);savePaper(s);renderPaper()}
 function lookupMark(p){
  const t=(P.tickers||[]).find(x=>x.ticker===p.ticker);if(!t)return{mark:null,spot:null};
  const rows=((((t.options||{}).chain||{}).contracts)||[]);const x=rows.find(z=>(p.contract_symbol&&z.contract_symbol===p.contract_symbol)||(!p.contract_symbol&&z.type===p.type&&z.strike===p.strike&&z.expiration===p.expiration));
