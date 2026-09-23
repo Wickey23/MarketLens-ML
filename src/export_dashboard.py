@@ -312,7 +312,7 @@ def analyze(ticker,learning=None):
     rel=relative_strength(raw,ticker)
     regime_series=classify_regime(raw)
     current_regime=str(regime_series.iloc[-1])
-    options["opportunity_radar"]=build_opportunity_radar(raw,(options.get("chain") or {}).get("contracts") or [],regime_series,current_regime,evidence,float(close.iloc[-1]),learning=learning)
+    options["opportunity_radar"]=build_opportunity_radar(raw,(options.get("chain") or {}).get("contracts") or [],regime_series,current_regime,evidence,float(close.iloc[-1]),learning=learning,context=ctx,relative_strength=rel,model_probability=current)
     explanation=plain_language(ticker,evidence,ctx,options,rel)
 
     return {
