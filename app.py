@@ -7,7 +7,7 @@ import re
 import urllib.error
 import urllib.request
 
-app = Flask(__name__)
+app = Flask(__name__)\n# DEPLOY_TRIGGER_MARKER_20260923_02
 DATA = Path(__file__).with_name("data") / "dashboard.json"
 
 HTML = r"""<!doctype html>
