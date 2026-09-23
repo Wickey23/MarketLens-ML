@@ -116,11 +116,18 @@ def build_opportunity_radar(raw, contracts, regime_series, current_regime, evide
         if spread is not None and spread>.20: risks.append("Wide spread can materially reduce realized returns")
         if loss>=.50: risks.append(f"Historical replay lost the full premium about {loss*100:.0f}% of the time")
         if stats["samples"]<100: risks.append("Historical sample is limited")
+        dte=c.get("dte")
+        iv=c.get("iv")
+        if dte is None or int(dte)<2: risks.append("Near-expiry contracts are excluded from strong-opportunity status")
+        if iv is not None and (float(iv)<.03 or float(iv)>5.0): risks.append("Implied volatility input appears unreliable for screening")
         if (evidence or {}).get("mean_roc_auc") is None or (evidence or {}).get("mean_roc_auc",0)<.53:
             risks.append("Directional ML model has not demonstrated strong out-of-sample discrimination")
 
         state="watch"
-        if score>=72 and pp>=.58 and ev is not None and ev>0 and stats["samples"]>=100 and (spread is None or spread<=.20):
+        hard_quality_gate=(dte is None or int(dte)<2 or (spread is not None and spread>.20)
+                           or (theta is not None and theta>.05)
+                           or (iv is not None and (float(iv)<.03 or float(iv)>5.0)))
+        if not hard_quality_gate and score>=72 and pp>=.58 and ev is not None and ev>0 and stats["samples"]>=100:
             state="investigate"
         elif score<55 or ev is None or ev<=0:
             state="pass"
