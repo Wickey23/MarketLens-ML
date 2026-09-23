@@ -152,8 +152,13 @@ async function runResearch(ticker=null){
   const t=ticker || (C&&C.ticker) || '';
   try{
     const r=await fetch('/api/run-research',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticker:t})});
-    const j=await r.json(); s.textContent=r.ok?('Queued '+(t||'core')+' ✓'):(j.error||'Failed');
-    if(r.ok)setTimeout(()=>s.textContent='Research running…',1700);
+    const j=await r.json(); s.textContent=r.ok?('Fast refresh queued '+(t||'core')+' ✓'):(j.error||'Failed');
+    if(r.ok){
+      setTimeout(()=>s.textContent='Market/options refresh running…',1700);
+      const start=P&&P.generated_at;
+      let tries=0;
+      const poll=setInterval(async()=>{tries++;try{const rr=await fetch('/api/data',{cache:'no-store'}),nn=await rr.json();if(nn.generated_at!==start){clearInterval(poll);P=nn;await reloadData(t||null);s.textContent='Fresh data loaded ✓'}}catch(e){}if(tries>=30){clearInterval(poll);s.textContent='Refresh queued — check shortly'}},10000);
+    }
   }catch(e){s.textContent='Failed'}
   finally{setTimeout(()=>b.disabled=false,3500)}
 }
@@ -163,6 +168,15 @@ function analyzeTicker(){
   const existing=P&&P.tickers&&P.tickers.find(x=>x.ticker===t);
   if(existing){const btn=[...tabs.children].find(x=>x.textContent===t);sel(t,btn);runStatus.textContent=t+' loaded';return}
   runResearch(t);
+}
+async function reloadData(selectTicker=null){
+  const r=await fetch('/api/data',{cache:'no-store'});const n=await r.json();
+  const old=P&&P.generated_at;P=n;
+  updated.textContent='Updated '+new Date(P.generated_at).toLocaleString();tabs.innerHTML='';
+  (P.tickers||[]).forEach((x,i)=>{const b=document.createElement('button');b.className='tab'+((selectTicker?x.ticker===selectTicker:i===0)?' active':'');b.textContent=x.ticker;b.onclick=()=>sel(x.ticker,b);tabs.appendChild(b)});
+  const target=(selectTicker&&P.tickers.find(x=>x.ticker===selectTicker))?selectTicker:(C&&P.tickers.find(x=>x.ticker===C.ticker)?C.ticker:(P.tickers[0]&&P.tickers[0].ticker));
+  if(target){const b=[...tabs.children].find(x=>x.textContent===target);sel(target,b)}
+  return old!==P.generated_at;
 }
 async function load(){
   const r=await fetch('/api/data',{cache:'no-store'});P=await r.json();
@@ -305,7 +319,8 @@ def run_research():
     payload={"ref":"main"}
     if ticker:
         payload["inputs"]={"ticker":ticker}
-    url="https://api.github.com/repos/Wickey23/MarketLens-ML/actions/workflows/daily-research.yml/dispatches"
+    workflow="fast-refresh.yml" if str(body.get("mode") or "fast")!="full" else "daily-research.yml"
+    url=f"https://api.github.com/repos/Wickey23/MarketLens-ML/actions/workflows/{workflow}/dispatches"
     req=urllib.request.Request(url,data=json.dumps(payload).encode(),method="POST",headers={
         "Authorization":f"Bearer {token}",
         "Accept":"application/vnd.github+json",
@@ -314,7 +329,7 @@ def run_research():
     })
     try:
         with urllib.request.urlopen(req,timeout=10):
-            return jsonify({"ok":True,"status":"queued","ticker":ticker or None})
+            return jsonify({"ok":True,"status":"queued","ticker":ticker or None,"workflow":workflow})
     except urllib.error.HTTPError as e:
         return jsonify({"ok":False,"error":f"GitHub trigger failed ({e.code})"}),502
     except Exception:
