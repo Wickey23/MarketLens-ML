@@ -78,6 +78,12 @@ def _guidance_payload(rows, evidence, current_regime=None, context=None, relativ
     catalyst_flags=list(ctx.get("catalyst_flags") or [])
     rel20=(relative_strength or {}).get("vs_spy_20d")
 
+    # User-facing guidance is stricter than the raw research screen: avoid
+    # presenting ultra-short contracts as the default "best" choice.
+    guidance_eligible=[r for r in eligible if int(r.get("dte") or 0)>=3]
+    if guidance_eligible:
+        eligible=guidance_eligible
+
     enriched=[]
     for r in eligible:
         q=dict(r)
@@ -138,6 +144,28 @@ def _guidance_payload(rows, evidence, current_regime=None, context=None, relativ
         combined += event_points
 
         q["combined_evidence_score"]=round(max(0,min(100,combined)),1)
+        # Explain the practical risk profile separately from the score.
+        dte_i=int(q.get("dte") or 0)
+        theta_abs=abs(float(q.get("theta_cost_pct_per_day") or 0))
+        spread_abs=abs(float(q.get("spread_pct") or 0))
+        full_loss=float(q.get("prob_total_premium_loss") or 0)
+        if dte_i<=5 or theta_abs>.035 or full_loss>.30:
+            q["risk_tier"]="aggressive"
+        elif dte_i<=14 or theta_abs>.02 or spread_abs>.12 or full_loss>.18:
+            q["risk_tier"]="moderate"
+        else:
+            q["risk_tier"]="lower_relative_risk"
+        ci_width=(float(ci[1])-float(ci[0])) if ci[0] is not None and ci[1] is not None else None
+        if q.get("samples",0)>=300 and ci_width is not None and ci_width<=.10:
+            q["evidence_confidence"]="higher"
+        elif q.get("samples",0)>=150 and ci_width is not None and ci_width<=.16:
+            q["evidence_confidence"]="moderate"
+        else:
+            q["evidence_confidence"]="limited"
+        q["simulator_priority"]=bool(
+            dte_i>=3 and q["combined_evidence_score"]>=72 and p>=.58 and ev>0
+            and q.get("samples",0)>=100
+        )
         q["historical_downside_return_p10"]=_f(downside_return(q))
         q["reward_to_p10_downside"]=_f(rr)
         q["all_data_components"]={
