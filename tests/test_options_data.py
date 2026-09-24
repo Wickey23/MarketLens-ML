@@ -84,3 +84,73 @@ def test_tradier_market_clock_unconfigured(monkeypatch):
     monkeypatch.delenv("TRADIER_ACCESS_TOKEN",raising=False)
     out=tradier_market_clock()
     assert out["state"]=="unconfigured"
+
+
+def test_occ_parser_supports_alpaca_contract_symbols():
+    meta=od._parse_occ_symbol("NVDA261002C00210000")
+    assert meta["type"]=="call"
+    assert meta["expiration"]=="2026-10-02"
+    assert meta["strike"]==210.0
+
+
+def test_alpaca_opra_snapshot_is_execution_grade(monkeypatch):
+    monkeypatch.setenv("ALPACA_API_KEY_ID","key")
+    monkeypatch.setenv("ALPACA_API_SECRET_KEY","secret")
+    monkeypatch.setenv("ALPACA_OPTIONS_FEED","opra")
+    monkeypatch.setenv("ALPACA_STOCK_FEED","sip")
+    def fake_get(url,params=None):
+        if "/stocks/" in url:
+            return {
+                "latestQuote":{"bp":99.9,"ap":100.1,"t":"2026-09-24T19:30:00Z"},
+                "latestTrade":{"p":100.0,"t":"2026-09-24T19:30:00Z"},
+                "dailyBar":{"o":99.0,"h":101.0,"l":98.5},
+                "prevDailyBar":{"c":99.5},
+            }
+        return {"snapshots":{
+            "ABC261002C00100000":{
+                "latestQuote":{"bp":4.9,"ap":5.1,"t":"2026-09-24T19:30:00Z"},
+                "latestTrade":{"p":5.0,"t":"2026-09-24T19:29:59Z"},
+                "dailyBar":{"v":200},
+                "impliedVolatility":0.30,
+                "greeks":{"delta":0.55,"gamma":0.02,"theta":-0.05,"vega":0.08},
+            }
+        }}
+    monkeypatch.setattr(od,"_alpaca_get",fake_get)
+    monkeypatch.setattr(od,"_risk_free_rate",lambda:(0.04,"test"))
+    out=od._alpaca_option_snapshot("ABC",100.0,0.20,2,8)
+    assert out["provider_key"]=="alpaca_opra"
+    assert out["realtime"] is True
+    q=out["contracts"][0]
+    assert q["provider_key"]=="alpaca_opra"
+    assert q["bid"]==4.9
+    assert q["ask"]==5.1
+    assert q["delta"]==0.55
+
+
+def test_multi_provider_merge_keeps_authoritative_quote(monkeypatch):
+    monkeypatch.setattr(od,"_risk_free_rate",lambda:(0.04,"test"))
+    base={
+        "contract_symbol":"ABC261002C00100000","type":"call","expiration":"2026-10-02",
+        "dte":8,"strike":100.0,"iv":0.30,"volume":100,"open_interest":500,
+        "in_the_money":False,"breakeven":105.1,"breakeven_move":0.051,
+        "spread_pct":0.02,
+    }
+    tradier={
+        "source":"Tradier Brokerage API","provider_key":"tradier","feed":"consolidated",
+        "underlying_price":100.0,
+        "underlying_quote":{"price":100.0,"provider":"Tradier","provider_key":"tradier","feed":"consolidated","realtime":True,"consolidated":True,"market_timestamp":"2026-09-24T19:30:00Z"},
+        "contracts":[{**base,"provider":"Tradier","provider_key":"tradier","feed":"consolidated","realtime":True,"consolidated":True,"bid":4.9,"ask":5.1,"mid":5.0,"quote_time":"2026-09-24T19:29:55Z"}],
+        "contracts_scanned":1,
+    }
+    indicative={
+        "source":"Alpaca indicative options","provider_key":"alpaca_indicative","feed":"indicative",
+        "underlying_price":100.01,
+        "underlying_quote":{"price":100.01,"provider":"Alpaca","provider_key":"alpaca_iex","feed":"iex","realtime":True,"consolidated":False,"market_timestamp":"2026-09-24T19:30:01Z"},
+        "contracts":[{**base,"provider":"Alpaca indicative","provider_key":"alpaca_indicative","feed":"indicative","realtime":True,"consolidated":False,"bid":4.95,"ask":5.05,"mid":5.0,"quote_time":"2026-09-24T19:30:01Z"}],
+        "contracts_scanned":1,
+    }
+    out=od._merge_option_snapshots("ABC",[tradier,indicative],0.20)
+    q=out["contracts"][0]
+    assert q["selected_quote_provider_key"]=="tradier"
+    assert q["execution_realtime"] is True
+    assert len(q["provider_candidates"])==2
