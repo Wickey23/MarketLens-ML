@@ -281,6 +281,7 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
              "entry_research_age_hours":timestamp_age_hours(t.get("research_refreshed_at"),now_dt),
              "entry_prob_profit":r.get("prob_profit"),"entry_prob_profit_ci95":r.get("prob_profit_ci95"),
              "entry_expected_pnl":r.get("expected_pnl_per_contract"),"entry_expected_return_on_debit":r.get("expected_return_on_debit"),
+             "entry_trimmed_mean_return_on_debit":r.get("trimmed_mean_return_on_debit"),
              "entry_median_return_on_debit":r.get("median_return_on_debit"),
              "entry_full_premium_loss_frequency":r.get("prob_total_premium_loss"),
              "entry_risk_tier":r.get("risk_tier"),"entry_evidence_confidence":r.get("evidence_confidence"),
@@ -429,7 +430,9 @@ def forward_validation_summary(state,strategy_version=CURRENT_STRATEGY_VERSION):
         actual=float(p.get("pnl") or 0.0)/qty
         prob=p.get("entry_prob_profit")
         expected=p.get("entry_expected_pnl")
-        expected_return=p.get("entry_expected_return_on_debit")
+        expected_return=p.get("entry_trimmed_mean_return_on_debit")
+        if expected_return is None:
+            expected_return=p.get("entry_expected_return_on_debit")
         debit=float(p.get("entry_price") or 0.0)*100.0
         actual_return=(actual/debit) if debit>0 else None
         rows.append({
