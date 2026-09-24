@@ -93,7 +93,7 @@ def quick_snapshot(ticker):
         "drawdown_252":sf(latest.get("drawdown_252")),
         "company_context":ctx,
         "options":{
-            "status":"Fast market/options snapshot active",
+            "status":("Execution-grade multi-provider option chain active" if chain.get("realtime") is True else "Fast market/options snapshot active"),
             "horizons":horizons,
             "realized_vol_20d":annual_rv,
             "chain":chain,
