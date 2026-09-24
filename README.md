@@ -1,67 +1,136 @@
 # MarketLens ML
 
-MarketLens is an options-research and paper-trading platform that combines market context, leakage-safe walk-forward ML validation, option-chain economics, historical scenario replay, an Opportunity Radar, and two separate paper accounts.
+MarketLens is an options-research and forward paper-testing platform. It combines leakage-aware walk-forward ML validation, market regime/context, live or fallback option-chain data, historical payoff replay, an Opportunity Radar, a manual paper simulator, and an isolated autonomous paper portfolio.
 
-It is a research and decision-support system. It does not place brokerage orders and does not guarantee profitable outcomes.
+MarketLens is research software. It does not submit brokerage orders and does not guarantee profitable outcomes.
 
-## Product workflow
+## Current workflow
 
 1. **Research** — inspect price, regime, realized volatility, model output, historical base rates, comparable signals, catalysts, news context, and out-of-sample metrics.
-2. **Options Lab** — compare delayed option-chain quotes, liquidity, spreads, implied volatility, estimated Greeks, breakeven, time decay, and expiration scenarios.
-3. **Simulator** — manually practice long-option market and limit orders with a browser-local $10,000 paper account.
-4. **AI Portfolio** — forward-test autonomous paper decisions from Opportunity Radar under conservative sizing and entry guardrails.
+2. **Options Lab** — compare bid/ask execution, liquidity, IV, Greeks, breakeven, theta, expirations, and scenario risk.
+3. **Simulator** — manually practice long-option entries/exits with a browser-local $10,000 paper account.
+4. **AI Portfolio** — prospectively test qualifying MarketLens setups in a separate persistent paper account.
+5. **Forward Validation** — compare realized paper outcomes against the historical replay evidence captured before each entry.
+6. **Readiness Review** — current-strategy evidence remains in collection until the minimum forward sample, observation span, breadth, P/L, concentration, and drawdown gates are met.
 
 ## Architecture
 
-- **Flask/Vercel frontend:** `app.py` + `templates/index.html`
-- **Heavy research:** GitHub Actions + Python ML modules
-- **Fast market refresh:** `src/fast_refresh.py`
-- **Daily walk-forward research:** `src/export_dashboard.py`
-- **Opportunity Radar:** `src/opportunity_radar.py`
-- **Autonomous paper account:** `src/ai_paper_trader.py`
-- **Live generated state:** `market-data` Git branch, `data/dashboard.json` and `data/ai_paper_portfolio.json`
+- Flask/Vercel web app: `app.py`, `index.py`, `templates/index.html`
+- Heavy research: GitHub Actions + Python ML modules
+- Fast market/options refresh: `src/fast_refresh.py`
+- Daily walk-forward research: `src/export_dashboard.py`
+- Opportunity Radar: `src/opportunity_radar.py`
+- Options providers/math: `src/options_data.py`
+- Autonomous paper account: `src/ai_paper_trader.py`
+- Persistent generated state: `market-data` branch
+  - `data/dashboard.json`
+  - `data/ai_paper_portfolio.json`
 
-The production application reads generated JSON from the dedicated `market-data` branch. This keeps frequent market snapshots separate from application-code commits and avoids unnecessary Vercel deployments.
+The web application reads generated research state from `market-data`. Vercel deployments are disabled for that branch so frequent JSON refreshes do not create web builds.
 
-## Validation
+## Market data
 
-Directional models currently include Logistic Regression and Random Forest. Walk-forward predictions use an expanding training window with a label embargo equal to the forecast horizon to avoid target leakage.
+### Tradier production path
 
-CI checks:
+When `TRADIER_ACCESS_TOKEN` is configured:
 
-- Python compilation for `src`, `app.py`, and `index.py`
-- Inline frontend JavaScript syntax
-- Flask route smoke tests
-- Feature/target construction
-- Opportunity Radar behavior
-- Autonomous paper-trader behavior and entry guardrails
+- REST underlying quotes prefer Tradier.
+- Options chains use Tradier production data.
+- Option-chain economics use the same Tradier underlying quote as the option snapshot.
+- Tradier/ORATS Greeks are used when available.
+- The browser can request a short-lived Tradier streaming session without receiving the permanent token.
+- The autonomous paper strategy only opens new positions from option snapshots explicitly marked real-time.
+- Tradier's market clock is attached to research snapshots and helps gate simulated execution.
 
-## Autonomous paper guardrails
+The permanent Tradier token stays server-side / in GitHub Actions secrets. The project contains no brokerage-order submission code.
 
-The AI portfolio is paper-only. New autonomous positions require Opportunity Radar qualification and additional constraints including minimum score, bounded DTE, acceptable spread, controlled theta burden, plausible implied-volatility inputs, positive historical replay economics, and fixed-fraction premium-at-risk sizing.
+### Fallback path
 
-Existing trades retain the facts captured at entry so later strategy changes do not rewrite their history.
+Without a production Tradier token, MarketLens can continue research with Yahoo/yfinance and optional Finnhub underlying quotes. Fallback option data may be delayed or stale and **does not qualify for the current autonomous forward experiment**.
 
-## Live quote overlay
+## ML validation
 
-The web app now has a separate underlying-quote path from the heavier research snapshots:
+Directional models currently include Logistic Regression and Random Forest.
 
-- If `FINNHUB_API_KEY` is configured on Vercel, MarketLens uses the provider-backed quote endpoint first.
-- Without that secret, the app falls back to Yahoo Finance's 1-minute chart feed.
-- Underlying quotes are cached server-side for roughly 10 seconds and the open browser polls the active ticker every 15 seconds.
-- Option chains, Greeks, Opportunity Radar, and model evidence remain snapshot-based and refresh through GitHub Actions every 30 minutes during the configured weekday market window.
-- The browser checks for a new research/options snapshot every two minutes and reloads it without requiring a Vercel redeploy.
+- Features use information available at or before each row.
+- The target is a future 5-trading-day return.
+- Walk-forward predictions use expanding training windows.
+- Training labels are embargoed by the forecast horizon to avoid overlap into each validation observation.
+- Similar-signal lift uncertainty uses paired moving-block bootstrap resampling, rather than subtracting a fixed base rate from a subset-only interval.
+- Model outputs are not presented as guaranteed or perfectly calibrated real-world probabilities.
 
-The active quote provider is exposed by `/api/health`. Exact exchange entitlements depend on the configured provider account.
+Historical option payoff replay applies today's strike and executable long-entry premium to historical underlying moves. It does **not** reconstruct historical option IV/Greeks paths and does not prove a durable edge. The forward paper record is the primary evidence for the actual strategy.
 
+## Autonomous paper strategy
 
-Option-chain and company context are retrieved through Yahoo Finance/yfinance and may be delayed, stale, incomplete, or inconsistent. Greeks are Black-Scholes estimates. Historical contract replay applies today's strike and premium economics to historical underlying moves; it is not historical option-chain reconstruction.
+Current strategy generation: `v3_realtime_session`.
 
-Model probabilities are research outputs, not guaranteed real-world probabilities. Current model validation should always be checked before giving directional output substantial weight.
+New paper entries require, among other controls:
+
+- current strategy score threshold
+- 3–45 DTE
+- valid two-sided bid/ask quote
+- quote freshness within the configured limit
+- real-time option-chain source
+- maximum spread
+- maximum theta burden relative to debit
+- plausible IV input
+- positive historical replay economics
+- minimum historical replay profit frequency
+- fixed-fraction premium-at-risk sizing
+- conservative U.S. regular-session window
+- Tradier market-clock state when available
+
+Long entries are simulated at the ask and exits at the bid. Expired options settle from intrinsic value rather than stale post-expiry quotes.
+
+Legacy experiments remain preserved in history but cannot count toward current-strategy readiness, attribution, or adaptive weighting.
+
+## Paper-to-real evidence gates
+
+The current server-side readiness review uses only current-strategy trades entered from real-time data. Defaults include:
+
+- at least 30 closed forward paper trades
+- at least 21 days of observation
+- positive net paper P/L
+- positive average trade
+- maximum drawdown no worse than 15%
+- largest winner no more than 50% of gross winning P/L
+- at least 3 tickers represented
+
+Passing the gates means the paper record is ready for human review. It is not a guarantee and does not automatically enable real-money trading.
+
+## Security and control plane
+
+Secrets must never be committed.
+
+Production/environment variables:
+
+- `TRADIER_ACCESS_TOKEN` — Tradier production token for market data
+- `GITHUB_ACTIONS_TOKEN` — server-side token used only to dispatch the lightweight refresh workflow
+- `FINNHUB_API_KEY` — optional underlying-quote fallback
+- `MARKETLENS_CONTROL_KEY` — optional app control key protecting refresh and streaming-session endpoints
+
+When `MARKETLENS_CONTROL_KEY` is configured, the browser requests it only for the current session and stores it in `sessionStorage`; it is sent only to MarketLens control endpoints.
+
+The refresh endpoint also checks GitHub's workflow history for a cross-instance cooldown so multiple Vercel instances cannot bypass the in-memory limiter.
+
+## CI
+
+Every push to `main` runs:
+
+- Python compilation
+- inline browser JavaScript syntax check
+- Flask route/API smoke tests
+- feature/target tests
+- options/Tradier integration tests
+- Opportunity Radar tests
+- market-universe scanner tests
+- autonomous paper-trader and readiness tests
+- block-bootstrap uncertainty tests
 
 ## Local setup
 
-For the web application:
+Web app:
 
 ```bash
 python -m venv .venv
@@ -71,7 +140,7 @@ pip install -r requirements.txt
 python app.py
 ```
 
-For the full research stack:
+Full research stack:
 
 ```bash
 pip install -r requirements-ml.txt
@@ -82,6 +151,15 @@ python -m pytest -q
 
 ## Deployment
 
-Vercel serves the lightweight Flask application from `main`. GitHub Actions perform the heavier market/ML work and write generated state to `market-data`.
+Vercel serves the Flask application from `main`. GitHub Actions perform the heavier market/ML work and commit generated state to `market-data`.
 
-The public refresh endpoint can launch only the lightweight fast-refresh workflow and is rate-limited. Full research remains scheduled or manually dispatched through GitHub Actions.
+There should be only one production Vercel project connected to this repository. Duplicate Vercel projects cause every `main` commit to build twice and should be disconnected or removed from Vercel.
+
+## Important limitations
+
+- Options can lose 100% of premium.
+- Real-time market-data availability depends on provider/account entitlements.
+- ORATS/Tradier Greeks have their own update frequency and are not tick-by-tick risk estimates.
+- Black-Scholes fallback metrics omit some real-world effects such as dividends and American early exercise.
+- Historical replay is not historical option-price reconstruction.
+- A profitable paper sample can fail out of sample later.
