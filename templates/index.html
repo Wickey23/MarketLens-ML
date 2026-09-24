@@ -144,7 +144,7 @@ body{background:radial-gradient(circle at 50% -20%,#10203a 0,transparent 38%),va
 <div class="value" id="replayResult" style="font-size:20px">—</div><div class="sub" id="replayText">—</div></section>
 </section>
 
-<section id="aiView" class="view"><div class="workspaceHead"><div><h2>AI Portfolio</h2><p class="sub">Forward-test MarketLens decisions separately from your manual trades.</p></div></div><div class="hint"><b>Autonomous paper testing.</b> This account is separate from your Simulator. It records qualifying setups and why the system acted or stayed in cash. It does not place real brokerage orders.</div>
+<section id="aiView" class="view"><div class="workspaceHead"><div><h2>AI Portfolio</h2><p class="sub">Forward-test MarketLens decisions separately from your manual trades.</p></div></div><div class="hint"><b>Autonomous paper testing.</b> This account is separate from your Simulator. It records qualifying setups and why the system acted or stayed in cash. It does not place real brokerage orders.</div><div class="nextAction" id="aiRuntimeStatus"><div><b>Checking AI runtime…</b><div class="sub">Evaluating market session, data quality and current candidates.</div></div></div>
 <section class="grid"><div class="card"><div class="label">AI PAPER EQUITY</div><div class="value" id="aiEquity">—</div><div class="sub">Started with $10,000 simulated capital</div></div><div class="card"><div class="label">TOTAL P/L</div><div class="value" id="aiPnl">—</div></div><div class="card"><div class="label">WIN RATE</div><div class="value" id="aiWin">—</div><div class="sub" id="aiTrades">—</div></div><div class="card"><div class="label">MAX DRAWDOWN</div><div class="value" id="aiDd">—</div></div></section>
 <section class="grid2" style="margin-top:12px"><div class="box chart"><div class="label">AI PORTFOLIO EQUITY</div><canvas id="aiChart"></canvas></div><div class="box"><div class="label">OPPORTUNITY INBOX</div><div class="sub">Only setups clearing the research thresholds appear here.</div><div id="aiInbox"></div></div></section><section class="box" style="margin-top:12px"><div class="readinessGrid"><div><div class="label">PAPER-TO-REAL READINESS</div><div class="readinessState" id="readinessState">Collecting data</div><div class="sub" id="readinessNote">Forward evidence is still being accumulated.</div></div><div><div class="label">EVIDENCE CHECKS</div><div class="readinessChecks" id="readinessChecks"></div></div></div></section>
 <section class="box" style="margin-top:12px"><div class="label">FORWARD VALIDATION · CURRENT STRATEGY</div><div class="sub" id="aiValidationNote">Waiting for eligible real-time forward trades.</div><section class="grid3" style="margin-top:10px"><div class="card"><div class="label">ELIGIBLE CLOSED TRADES</div><div class="value" id="aiValTrades">0</div></div><div class="card"><div class="label">REALIZED VS REFERENCE WIN RATE</div><div class="value" id="aiValWinGap">—</div></div><div class="card"><div class="label">REALIZED VS HISTORICAL RETURN</div><div class="value" id="aiValPnlError">—</div></div></section><div id="aiValBuckets" style="margin-top:10px"></div></section>
@@ -927,8 +927,22 @@ function renderForwardValidation(a){
   aiValBuckets.innerHTML=buckets.length?'<div class="table"><table><thead><tr><th>Entry replay band</th><th>Trades</th><th>Mean replay frequency</th><th>Realized win rate</th></tr></thead><tbody>'+buckets.map(x=>'<tr><td>'+esc(x.group)+'</td><td>'+x.trades+'</td><td>'+pc(x.mean_reference_profit_frequency)+'</td><td>'+pc(x.realized_win_rate)+'</td></tr>').join('')+'</tbody></table></div>':'<div class="empty">No eligible current-strategy trades have closed yet.</div>';
 }
 
+function renderAIRuntimeStatus(a){
+ const el=document.getElementById('aiRuntimeStatus');if(!el||!P)return;
+ const chains=(P.tickers||[]).map(t=>((t.options||{}).chain||{}));
+ const execContracts=chains.reduce((n,ch)=>n+Number(ch.execution_grade_contracts||0),0);
+ const strong=(P.market_guidance||{}).state==='strong_candidates';
+ const open=((a||{}).open||[]).filter(p=>!a.strategy_version||p.strategy_version===a.strategy_version).length;
+ const clock=(P.market_clock||{}).state||'unknown';
+ let title='SCANNING — NO QUALIFYING SETUP',detail='MarketLens is evaluating the current universe and will stay in cash unless a contract clears every entry rule.',cls='warn';
+ if(execContracts===0){title='WAITING FOR EXECUTION-GRADE OPTIONS DATA';detail='No fresh consolidated real-time option contracts are available to the current strategy. Research continues, but autonomous entries are blocked.';cls='warn'}
+ else if(clock&&clock!=='open'&&clock!=='unknown'&&clock!=='unconfigured'){title='MARKET SESSION NOT OPEN';detail='Research continues while autonomous paper fills wait for the regular market session. Current market-clock state: '+clock+'.';cls='warn'}
+ else if(open>0){title='AI PAPER POSITION ACTIVE';detail=open+' current-strategy paper position'+(open===1?' is':'s are')+' being monitored with bid-based marks and exit rules.';cls='good'}
+ else if(strong){title='STRONG RESEARCH CANDIDATE FOUND';detail='A contract clears the research gates. The AI still requires live execution data, market-session eligibility, sizing and risk checks before a paper entry.';cls='good'}
+ el.innerHTML='<div><b class="'+cls+'">'+esc(title)+'</b><div class="sub">'+esc(detail)+'</div></div><span class="statusPill">'+execContracts+' execution-grade contracts · '+(P.tickers||[]).length+' analyzed tickers</span>';
+}
 function renderAI(){
- const a=(P&&P.ai_portfolio)||{},version=a.strategy_version||null,s=a.strategy_summary||a.summary||{},allHist=a.equity_history||[],hist=version?allHist.filter(x=>x.strategy_version===version):allHist;
+ const a=(P&&P.ai_portfolio)||{},version=a.strategy_version||null,s=a.strategy_summary||a.summary||{},allHist=a.equity_history||[],hist=version?allHist.filter(x=>x.strategy_version===version):allHist;renderAIRuntimeStatus(a);
  const aiOpenRows=(a.open||[]).filter(p=>!version||p.strategy_version===version),aiClosedRows=(a.closed||[]).filter(p=>!version||p.strategy_version===version);
  aiEquity.textContent=money(s.equity);aiPnl.textContent=(Number(s.total_pnl||0)>=0?'+':'')+money(s.total_pnl||0);aiPnl.className='value '+(Number(s.total_pnl||0)>=0?'good':'bad');renderReadiness(a,s);renderForwardValidation(a);
  aiWin.textContent=s.win_rate==null?'—':pc(s.win_rate);aiTrades.textContent=(s.closed_trades||0)+' closed · '+(s.open_positions||0)+' open'+(version?' · '+version:'');aiDd.textContent=pc(s.max_drawdown);
