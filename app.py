@@ -448,8 +448,6 @@ def market_stream_status():
 
 @app.post("/api/market-stream/session")
 def market_stream_session():
-    if not _control_authorized():
-        return jsonify({"ok":False,"error":"Control authorization required","requires_control_key":True}),401
     if not os.getenv("TRADIER_ACCESS_TOKEN"):
         return jsonify({
             "ok":False,
@@ -457,6 +455,14 @@ def market_stream_session():
             "required_env":"TRADIER_ACCESS_TOKEN",
             "fallback":"MarketLens will continue using the near-live polling overlay and scheduled option snapshots.",
         }),503
+    if not os.getenv("MARKETLENS_CONTROL_KEY"):
+        return jsonify({
+            "ok":False,
+            "error":"MarketLens control protection is not configured",
+            "required_env":"MARKETLENS_CONTROL_KEY",
+        }),503
+    if not _control_authorized():
+        return jsonify({"ok":False,"error":"Control authorization required","requires_control_key":True}),401
     try:
         sessionid=_create_tradier_market_session()
         return jsonify({
@@ -491,8 +497,6 @@ def health():
 
 @app.post("/api/run-research")
 def run_research():
-    if not _control_authorized():
-        return jsonify({"ok":False,"error":"Control authorization required","requires_control_key":True}),401
     body = request.get_json(silent=True) or {}
     ticker = str(body.get("ticker") or "").upper().strip()
     if ticker and not re.fullmatch(r"[A-Z][A-Z0-9.\-]{0,7}", ticker):
@@ -501,6 +505,14 @@ def run_research():
     token = os.getenv("GITHUB_ACTIONS_TOKEN")
     if not token:
         return jsonify({"ok": False, "error": "Server trigger is not configured"}), 503
+    if not os.getenv("MARKETLENS_CONTROL_KEY"):
+        return jsonify({
+            "ok":False,
+            "error":"MarketLens control protection is not configured",
+            "required_env":"MARKETLENS_CONTROL_KEY",
+        }),503
+    if not _control_authorized():
+        return jsonify({"ok":False,"error":"Control authorization required","requires_control_key":True}),401
 
     forwarded = request.headers.get("X-Forwarded-For", "")
     client = (forwarded.split(",")[0].strip() if forwarded else request.remote_addr) or "unknown"
