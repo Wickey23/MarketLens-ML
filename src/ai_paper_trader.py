@@ -241,6 +241,56 @@ def performance_summary(state):
             "max_drawdown":max_dd,"open_positions":len(state.get("open") or [])}
 
 
+def paper_to_real_readiness(state, min_closed_trades=30):
+    """Forward-only readiness evidence for considering a tiny real-money review.
+
+    This is deliberately conservative and is not an authorization to trade.
+    It summarizes whether the paper record has enough breadth and risk control
+    to justify human review.
+    """
+    summary=performance_summary(state)
+    closed=state.get("closed") or []
+    n=len(closed)
+    pnls=[float(p.get("pnl") or 0.0) for p in closed]
+    avg_pnl=(sum(pnls)/n) if n else None
+    winners=[x for x in pnls if x>0]
+    winner_sum=sum(winners)
+    largest_winner=max(winners) if winners else 0.0
+    winner_concentration=(largest_winner/winner_sum) if winner_sum>0 else None
+    ticker_count=len({p.get("ticker") for p in closed if p.get("ticker")})
+
+    checks=[
+        {"id":"forward_sample","label":"Forward sample","pass":n>=min_closed_trades,
+         "value":n,"target":min_closed_trades},
+        {"id":"net_pnl","label":"Net paper P/L","pass":n>0 and float(summary.get("total_pnl") or 0)>0,
+         "value":summary.get("total_pnl"),"target":"> 0"},
+        {"id":"avg_trade","label":"Average trade","pass":n>0 and avg_pnl is not None and avg_pnl>0,
+         "value":avg_pnl,"target":"> 0"},
+        {"id":"max_drawdown","label":"Max drawdown","pass":n>0 and abs(float(summary.get("max_drawdown") or 0))<=.15,
+         "value":summary.get("max_drawdown"),"target":"<= 15%"},
+        {"id":"winner_concentration","label":"Winner concentration","pass":n>=10 and winner_concentration is not None and winner_concentration<=.50,
+         "value":winner_concentration,"target":"<= 50% of gross winning P/L"},
+        {"id":"ticker_breadth","label":"Ticker breadth","pass":n>=15 and ticker_count>=3,
+         "value":ticker_count,"target":">= 3 tickers"},
+    ]
+    enough_sample=n>=min_closed_trades
+    all_pass=all(bool(x["pass"]) for x in checks)
+    if not enough_sample:
+        state_name="collecting_forward_data"
+    elif all_pass:
+        state_name="paper_results_ready_for_review"
+    else:
+        state_name="paper_results_not_ready"
+    return {
+        "state":state_name,
+        "closed_trades":n,
+        "minimum_closed_trades":min_closed_trades,
+        "all_checks_pass":all_pass,
+        "checks":checks,
+        "note":"This readiness result is forward-paper evidence only. It does not guarantee future profitability or automatically authorize real-money trading.",
+    }
+
+
 def _group_stats(closed,key_fn):
     groups=defaultdict(list)
     for p in closed:
