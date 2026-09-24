@@ -17,8 +17,10 @@ DATA = Path(__file__).with_name("data") / "dashboard.json"
 _TRIGGER_COOLDOWN_SECONDS = 30
 _TRIGGER_REMOTE_COOLDOWN_SECONDS = 300
 _LIVE_QUOTE_TTL_SECONDS = 10
+_RESEARCH_DATA_TTL_SECONDS = 15
 _trigger_last_seen = {}
 _live_quote_cache = {}
+_research_data_cache = {"at":None,"payload":None}
 
 
 def _control_authorized():
@@ -58,6 +60,11 @@ def _latest_fast_refresh_age_seconds(token):
 
 def read_data():
     """Read the latest generated research state from the dedicated data branch."""
+    now=time.monotonic()
+    cached=_research_data_cache.get("payload")
+    cached_at=_research_data_cache.get("at")
+    if cached is not None and cached_at is not None and now-cached_at<_RESEARCH_DATA_TTL_SECONDS:
+        return dict(cached)
     url = "https://raw.githubusercontent.com/Wickey23/MarketLens-ML/market-data/data/dashboard.json"
     try:
         req = urllib.request.Request(
@@ -67,7 +74,9 @@ def read_data():
         with urllib.request.urlopen(req, timeout=8) as response:
             payload = json.loads(response.read().decode("utf-8"))
             payload["_data_source"] = "github-market-data-live-v3"
-            return payload
+            _research_data_cache["at"]=now
+            _research_data_cache["payload"]=payload
+            return dict(payload)
     except Exception as exc:
         if DATA.exists():
             payload = json.loads(DATA.read_text(encoding="utf-8"))
@@ -323,6 +332,21 @@ def live_quotes(tickers):
     return quotes, errors
 
 
+@app.after_request
+def security_headers(response):
+    response.headers.setdefault("X-Content-Type-Options","nosniff")
+    response.headers.setdefault("X-Frame-Options","DENY")
+    response.headers.setdefault("Referrer-Policy","strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy","camera=(), microphone=(), geolocation=()")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+        "style-src 'self' 'unsafe-inline'; connect-src 'self' wss://ws.tradier.com; "
+        "img-src 'self' data: https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    )
+    return response
+
+
 @app.get("/")
 def home():
     return render_template("index.html")
@@ -457,6 +481,7 @@ def health():
             "commit": os.getenv("VERCEL_GIT_COMMIT_SHA"),
             "data_branch": "market-data",
             "live_quote_ttl_seconds": _LIVE_QUOTE_TTL_SECONDS,
+            "research_data_ttl_seconds": _RESEARCH_DATA_TTL_SECONDS,
             "live_provider": ("tradier-rest+stream" if os.getenv("TRADIER_ACCESS_TOKEN") else ("finnhub" if os.getenv("FINNHUB_API_KEY") else "yahoo-fallback")),
             "market_stream_configured": bool(os.getenv("TRADIER_ACCESS_TOKEN")),
             "control_key_configured": bool(os.getenv("MARKETLENS_CONTROL_KEY")),
