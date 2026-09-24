@@ -267,7 +267,8 @@ def _alpaca_get(url, params=None):
 
 
 def _alpaca_stock_quote(ticker, now):
-    feed=(os.getenv("ALPACA_STOCK_FEED") or "iex").strip().lower()
+    default_feed="sip" if (os.getenv("ALPACA_OPTIONS_FEED") or "").strip().lower()=="opra" else "iex"
+    feed=(os.getenv("ALPACA_STOCK_FEED") or default_feed).strip().lower()
     body=_alpaca_get(
         f"https://data.alpaca.markets/v2/stocks/{urllib.parse.quote(ticker,safe='')}/snapshot",
         {"feed":feed},
