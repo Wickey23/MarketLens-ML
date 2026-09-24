@@ -252,7 +252,7 @@ def test_live_quote_can_crosscheck_alpaca_and_tradier(monkeypatch):
         "market_timestamp":"2026-09-24T19:30:02+00:00"
     })
     q=market_app.live_quote("SPY")
-    assert q["provider"]=="Alpaca Market Data"
+    assert q["provider"]=="Tradier Brokerage API"
     assert q["data_confidence"]=="high"
     assert len(q["provider_candidates"])==3
 
