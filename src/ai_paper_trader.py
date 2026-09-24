@@ -116,7 +116,13 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
     now_dt=now_dt or datetime.now(timezone.utc)
     if now_dt.tzinfo is None:
         now_dt=now_dt.replace(tzinfo=timezone.utc)
-    market_session_open=is_regular_market_session(now_dt)
+    local_session_open=is_regular_market_session(now_dt)
+    clock=(snapshot.get("market_clock") or {})
+    clock_state=str(clock.get("state") or "").lower()
+    if clock_state in ("open","premarket","postmarket","closed"):
+        market_session_open=local_session_open and clock_state=="open"
+    else:
+        market_session_open=local_session_open
     now=now_dt.isoformat()
     snapshot_id=snapshot.get("generated_at") or snapshot.get("fast_generated_at")
     if snapshot_id and state.get("last_processed_snapshot")==snapshot_id:
@@ -261,6 +267,7 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
     state["updated_at"]=now
     state["strategy_version"]=CURRENT_STRATEGY_VERSION
     state["paper_market_session_open"]=market_session_open
+    state["market_clock_state"]=clock_state or "local_fallback"
     state["last_processed_snapshot"]=snapshot_id
     return state
 
