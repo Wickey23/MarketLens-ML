@@ -12,7 +12,7 @@ from src.features import build_features
 from src.options_data import option_snapshot
 from src.regime import classify_regime
 from src.opportunity_radar import build_opportunity_radar
-from src.ai_paper_trader import load_state, save_state, run_ai_paper_portfolio, performance_summary, performance_attribution, learning_profile, paper_to_real_readiness
+from src.ai_paper_trader import load_state, save_state, run_ai_paper_portfolio, performance_summary, performance_attribution, learning_profile, paper_to_real_readiness, strategy_performance_summary, forward_validation_summary, CURRENT_STRATEGY_VERSION
 from src.universe_scanner import choose_research_universe
 
 DATA_PATH=Path("data/dashboard.json")
@@ -149,7 +149,7 @@ def main():
     p["errors"]=errors
     ai_state=run_ai_paper_portfolio(p,load_state())
     save_state(ai_state)
-    p["ai_portfolio"]={"summary":performance_summary(ai_state),"readiness":paper_to_real_readiness(ai_state),"attribution":performance_attribution(ai_state),"learning":learning_profile(ai_state),"updated_at":ai_state.get("updated_at"),"open":ai_state.get("open",[]),"closed":ai_state.get("closed",[])[-100:],"decisions":ai_state.get("decisions",[])[-100:],"equity_history":ai_state.get("equity_history",[])[-300:]}
+    p["ai_portfolio"]={"summary":performance_summary(ai_state),"strategy_summary":strategy_performance_summary(ai_state),"readiness":paper_to_real_readiness(ai_state),"forward_validation":forward_validation_summary(ai_state),"attribution":performance_attribution(ai_state),"learning":learning_profile(ai_state),"strategy_version":CURRENT_STRATEGY_VERSION,"updated_at":ai_state.get("updated_at"),"paper_market_session_open":ai_state.get("paper_market_session_open"),"open":ai_state.get("open",[]),"closed":ai_state.get("closed",[])[-100:],"decisions":ai_state.get("decisions",[])[-100:],"equity_history":ai_state.get("equity_history",[])[-300:]}
     DATA_PATH.parent.mkdir(exist_ok=True)
     DATA_PATH.write_text(json.dumps(p,indent=2),encoding="utf-8")
     print(json.dumps({"refreshed":tickers,"universe_scan":p.get("universe_scan"),"errors":errors,"ai_portfolio":p["ai_portfolio"]["summary"]},indent=2))
