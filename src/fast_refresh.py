@@ -37,19 +37,35 @@ def load_existing():
 
 
 def options_summary(chain,spot):
-    expiries=chain.get("expirations") or []
     contracts=chain.get("contracts") or []
-    out={"nearest_expiration":expiries[0] if expiries else None,"atm_straddle_implied_move":None}
-    if expiries and contracts and spot:
-        exp=expiries[0]
+    expiries=chain.get("expirations") or []
+    out={
+        "nearest_expiration":expiries[0] if expiries else None,
+        "atm_straddle_implied_move":None,
+        "implied_moves_by_expiration":{},
+    }
+    if not contracts or not spot:
+        return out
+    for exp in expiries:
         calls=[x for x in contracts if x.get("expiration")==exp and x.get("type")=="call" and x.get("mid")]
         puts=[x for x in contracts if x.get("expiration")==exp and x.get("type")=="put" and x.get("mid")]
-        if calls and puts:
-            c=min(calls,key=lambda x:abs((x.get("strike") or spot)-spot))
-            p=min(puts,key=lambda x:abs((x.get("strike") or spot)-spot))
-            out.update({"atm_straddle_implied_move":sf((c["mid"]+p["mid"])/spot),"atm_reference_strikes":[c["strike"],p["strike"]],"atm_expiration":exp})
+        if not calls or not puts:
+            continue
+        call=min(calls,key=lambda x:abs((x.get("strike") or spot)-spot))
+        put=min(puts,key=lambda x:abs((x.get("strike") or spot)-spot))
+        move=sf(((call.get("mid") or 0)+(put.get("mid") or 0))/spot)
+        if move is None:
+            continue
+        out["implied_moves_by_expiration"][exp]={
+            "move":move,
+            "call_strike":call.get("strike"),
+            "put_strike":put.get("strike"),
+        }
+        if exp==out["nearest_expiration"]:
+            out["atm_straddle_implied_move"]=move
+            out["atm_reference_strikes"]=[call.get("strike"),put.get("strike")]
+            out["atm_expiration"]=exp
     return out
-
 
 def quick_snapshot(ticker):
     raw=download_prices(ticker,"2010-01-01")
