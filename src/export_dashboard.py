@@ -136,23 +136,33 @@ def enrich_earnings_history(ctx, raw):
 def options_summary(chain,spot):
     contracts=chain.get("contracts") or []
     expiries=chain.get("expirations") or []
-    out={"nearest_expiration":expiries[0] if expiries else None,"atm_straddle_implied_move":None}
+    out={
+        "nearest_expiration":expiries[0] if expiries else None,
+        "atm_straddle_implied_move":None,
+        "implied_moves_by_expiration":{},
+    }
     if not contracts or not spot:
         return out
-    if expiries:
-        exp=expiries[0]
-        calls=[x for x in contracts if x["expiration"]==exp and x["type"]=="call" and x.get("mid")]
-        puts=[x for x in contracts if x["expiration"]==exp and x["type"]=="put" and x.get("mid")]
-        if calls and puts:
-            c=min(calls,key=lambda x:abs((x.get("strike") or spot)-spot))
-            p=min(puts,key=lambda x:abs((x.get("strike") or spot)-spot))
-            if c.get("strike") is not None and p.get("strike") is not None:
-                # Use the closest common/nearby strikes as a practical ATM straddle estimate.
-                out["atm_straddle_implied_move"]=sf(((c["mid"] or 0)+(p["mid"] or 0))/spot)
-                out["atm_reference_strikes"]=[c["strike"],p["strike"]]
-                out["atm_expiration"]=exp
+    for exp in expiries:
+        calls=[x for x in contracts if x.get("expiration")==exp and x.get("type")=="call" and x.get("mid")]
+        puts=[x for x in contracts if x.get("expiration")==exp and x.get("type")=="put" and x.get("mid")]
+        if not calls or not puts:
+            continue
+        call=min(calls,key=lambda x:abs((x.get("strike") or spot)-spot))
+        put=min(puts,key=lambda x:abs((x.get("strike") or spot)-spot))
+        move=sf(((call.get("mid") or 0)+(put.get("mid") or 0))/spot)
+        if move is None:
+            continue
+        out["implied_moves_by_expiration"][exp]={
+            "move":move,
+            "call_strike":call.get("strike"),
+            "put_strike":put.get("strike"),
+        }
+        if exp==out["nearest_expiration"]:
+            out["atm_straddle_implied_move"]=move
+            out["atm_reference_strikes"]=[call.get("strike"),put.get("strike")]
+            out["atm_expiration"]=exp
     return out
-
 
 def plain_language(ticker,evidence,ctx,options,rel):
     notes=[]
