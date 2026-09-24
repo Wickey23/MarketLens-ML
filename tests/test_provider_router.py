@@ -76,3 +76,15 @@ def test_underlying_prefers_authoritative_feed_over_delayed_yahoo():
     ],now=NOW)
     assert out["provider_key"]=="alpaca_sip"
     assert out["data_confidence"]=="medium"
+
+
+def test_stale_consolidated_option_quote_is_not_execution_grade():
+    rows=[{
+        "provider":"Tradier","provider_key":"tradier","feed":"consolidated",
+        "realtime":True,"consolidated":True,"bid":10.0,"ask":10.1,
+        "quote_time":"2026-09-24T19:28:00+00:00",
+    }]
+    out=choose_option_quote(rows,now=NOW)
+    assert out["data_confidence"]=="medium"
+    assert out["execution_realtime"] is False
+    assert out["quote_age_seconds"]>60
