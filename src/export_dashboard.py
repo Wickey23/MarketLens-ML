@@ -59,6 +59,35 @@ def wilson(k,n,z=1.96):
     return [sf(center-half),sf(center+half)]
 
 
+def block_bootstrap_lift_ci(y, similar_mask, block_size=5, samples=1000, seed=42):
+    """Descriptive CI for similar-signal lift using paired moving-block resampling.
+
+    Resampling labels and the similar-signal mask together keeps their relationship
+    intact and partially reflects serial dependence from overlapping horizons.
+    """
+    y=np.asarray(y,dtype=float)
+    similar_mask=np.asarray(similar_mask,dtype=bool)
+    n=len(y)
+    if n==0 or len(similar_mask)!=n or int(similar_mask.sum())<20:
+        return [None,None]
+    block=max(1,min(int(block_size),n))
+    starts=np.arange(0,max(1,n-block+1))
+    rng=np.random.default_rng(seed)
+    lifts=[]
+    blocks_needed=int(np.ceil(n/block))
+    for _ in range(int(samples)):
+        chosen=rng.choice(starts,size=blocks_needed,replace=True)
+        idx=np.concatenate([np.arange(s,min(s+block,n)) for s in chosen])[:n]
+        by=y[idx]
+        bm=similar_mask[idx]
+        if int(bm.sum())<10:
+            continue
+        lifts.append(float(by[bm].mean()-by.mean()))
+    if len(lifts)<100:
+        return [None,None]
+    return [sf(np.quantile(lifts,.025)),sf(np.quantile(lifts,.975))]
+
+
 def relative_strength(raw,ticker):
     if ticker=="SPY":
         return {"vs_spy_20d":0.0,"vs_spy_60d":0.0}
@@ -243,13 +272,7 @@ def analyze(ticker,learning=None):
     else:
         quality="Weak historical discrimination"
 
-    lift_ci=[None,None]
-    if base is not None and sn:
-        up_ci=similar.get("up_rate_ci95") or [None,None]
-        lift_ci=[
-            sf(up_ci[0]-base) if up_ci[0] is not None else None,
-            sf(up_ci[1]-base) if up_ci[1] is not None else None,
-        ]
+    lift_ci=block_bootstrap_lift_ci(ey,sm,block_size=HORIZON,samples=1000,seed=42) if sn else [None,None]
 
     evidence={
         "validation_quality":quality,
@@ -260,7 +283,7 @@ def analyze(ticker,learning=None):
         "similar_sample_size":sn,
         "notes":[
             "Model output is not a calibrated real-world probability.",
-            "Compare signal lift with the unconditional base rate and its uncertainty interval.",
+            "Compare signal lift with the unconditional base rate; the lift interval uses paired moving-block bootstrap resampling to reflect base-rate uncertainty and some serial dependence.",
             "Give more weight to signals only when validation and sample size support them.",
         ],
     }
