@@ -86,9 +86,14 @@ def test_live_quote_prefers_provider_when_key_present(monkeypatch):
     monkeypatch.setenv("FINNHUB_API_KEY","test-key")
     monkeypatch.setattr(market_app,"_finnhub_live_quote",lambda ticker,key:{
         "ticker":ticker,"price":200.0,"change_pct":0.02,"provider":"Finnhub quote",
-        "realtime":True,"delayed":False
+        "provider_key":"finnhub","feed":"provider","consolidated":False,
+        "realtime":True,"delayed":False,"market_timestamp":"2026-09-24T19:30:00+00:00"
     })
-    monkeypatch.setattr(market_app,"_yahoo_live_quote",lambda ticker:(_ for _ in ()).throw(AssertionError("Yahoo fallback should not run")))
+    monkeypatch.setattr(market_app,"_yahoo_live_quote",lambda ticker:{
+        "ticker":ticker,"price":199.9,"provider":"Yahoo Finance chart","provider_key":"yahoo",
+        "feed":"best-effort","consolidated":False,"realtime":False,"delayed":True,
+        "market_timestamp":"2026-09-24T19:30:01+00:00"
+    })
     q=market_app.live_quote("SPY")
     assert q["price"]==200.0
     assert q["provider"]=="Finnhub quote"
@@ -102,7 +107,7 @@ def test_market_stream_status_without_token(monkeypatch):
     assert r.status_code==200
     j=r.get_json()
     assert j["configured"] is False
-    assert j["mode"]=="near-live-polling"
+    assert j["mode"]=="multi-provider-rest"
 
 
 def test_market_stream_session_requires_token(monkeypatch):
@@ -135,9 +140,19 @@ def test_live_quote_prefers_tradier_when_configured(monkeypatch):
     monkeypatch.setenv("FINNHUB_API_KEY","finnhub-test")
     monkeypatch.setattr(market_app,"_tradier_live_quote",lambda ticker,token:{
         "ticker":ticker,"price":300.0,"change_pct":0.01,"provider":"Tradier Brokerage API",
-        "realtime":True,"delayed":False
+        "provider_key":"tradier","feed":"consolidated","consolidated":True,
+        "realtime":True,"delayed":False,"market_timestamp":"2026-09-24T19:30:00+00:00"
     })
-    monkeypatch.setattr(market_app,"_finnhub_live_quote",lambda *args:(_ for _ in ()).throw(AssertionError("Finnhub should not run")))
+    monkeypatch.setattr(market_app,"_finnhub_live_quote",lambda *args:{
+        "ticker":"SPY","price":300.2,"provider":"Finnhub quote","provider_key":"finnhub",
+        "feed":"provider","consolidated":False,"realtime":True,"delayed":False,
+        "market_timestamp":"2026-09-24T19:30:01+00:00"
+    })
+    monkeypatch.setattr(market_app,"_yahoo_live_quote",lambda ticker:{
+        "ticker":ticker,"price":300.1,"provider":"Yahoo Finance chart","provider_key":"yahoo",
+        "feed":"best-effort","consolidated":False,"realtime":False,"delayed":True,
+        "market_timestamp":"2026-09-24T19:30:02+00:00"
+    })
     q=market_app.live_quote("SPY")
     assert q["price"]==300.0
     assert q["provider"]=="Tradier Brokerage API"
@@ -211,3 +226,32 @@ def test_research_trigger_fails_closed_without_control_key(monkeypatch):
     r=client.post("/api/run-research",json={"ticker":"SPY"})
     assert r.status_code==503
     assert r.get_json()["required_env"]=="MARKETLENS_CONTROL_KEY"
+
+
+def test_live_quote_can_crosscheck_alpaca_and_tradier(monkeypatch):
+    market_app._live_quote_cache.clear()
+    monkeypatch.setenv("TRADIER_ACCESS_TOKEN","tradier-test")
+    monkeypatch.setenv("ALPACA_API_KEY_ID","alpaca-key")
+    monkeypatch.setenv("ALPACA_API_SECRET_KEY","alpaca-secret")
+    monkeypatch.delenv("FINNHUB_API_KEY",raising=False)
+    monkeypatch.setattr(market_app,"_tradier_live_quote",lambda *args:{
+        "ticker":"SPY","price":500.0,"bid":499.99,"ask":500.01,
+        "provider":"Tradier Brokerage API","provider_key":"tradier","feed":"consolidated",
+        "consolidated":True,"realtime":True,"delayed":False,
+        "market_timestamp":"2026-09-24T19:30:00+00:00"
+    })
+    monkeypatch.setattr(market_app,"_alpaca_live_quote",lambda *args:{
+        "ticker":"SPY","price":500.01,"bid":500.0,"ask":500.02,
+        "provider":"Alpaca Market Data","provider_key":"alpaca_sip","feed":"sip",
+        "consolidated":True,"realtime":True,"delayed":False,
+        "market_timestamp":"2026-09-24T19:30:01+00:00"
+    })
+    monkeypatch.setattr(market_app,"_yahoo_live_quote",lambda ticker:{
+        "ticker":ticker,"price":499.8,"provider":"Yahoo Finance chart","provider_key":"yahoo",
+        "feed":"best-effort","consolidated":False,"realtime":False,"delayed":True,
+        "market_timestamp":"2026-09-24T19:30:02+00:00"
+    })
+    q=market_app.live_quote("SPY")
+    assert q["provider"]=="Alpaca Market Data"
+    assert q["data_confidence"]=="high"
+    assert len(q["provider_candidates"])==3
