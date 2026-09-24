@@ -191,9 +191,14 @@ async function refreshLiveQuote(){
     if(q.change_pct!=null)C.live_change_1d=Number(q.change_pct);
     C.live_quote_time=q.market_timestamp||q.served_at||null;
     C.live_quote_provider=q.provider||'market provider';
+    C.live_quote_confidence=q.data_confidence||null;
+    C.live_provider_agreement_pct=q.provider_agreement_pct;
+    C.live_provider_candidates=q.provider_candidates||[];
     renderResearch();
     const stamp=C.live_quote_time?new Date(C.live_quote_time).toLocaleTimeString([], {hour:'numeric',minute:'2-digit',second:'2-digit'}):'time unavailable';
-    if(status)status.textContent=(q.delayed?'Near-live quote':'Live quote')+' · '+stamp+' · '+C.live_quote_provider;
+    const conf=C.live_quote_confidence?(' · confidence '+String(C.live_quote_confidence).toUpperCase()):'';
+    const agree=C.live_provider_agreement_pct==null?'':(' · closest source '+Number(C.live_provider_agreement_pct).toFixed(2)+'% away');
+    if(status)status.textContent=(q.delayed?'Near-live quote':'Live quote')+' · '+stamp+' · '+C.live_quote_provider+conf+agree;
   }catch(e){
     if(status)status.textContent='Live quote unavailable · showing research snapshot';
   }
@@ -315,7 +320,8 @@ function refreshSelectedContractLiveStats(){
   contractStats.innerHTML=[
     ['Bid',money(x.bid)],['Ask',money(x.ask)],['Premium mid',money(x.mid)],['Breakeven',money(x.breakeven)],['IV',pc(x.iv)],
     ['Delta',num(x.delta,3)],['Theta/day',money(x.theta_per_contract_per_day)],['Vega/1pt',money(x.vega_per_contract_per_vol_point)],['Spread',pc(x.spread_pct)],['Open interest',x.open_interest],
-    ['Max debit',money(x.max_loss_per_contract)],['RV BE estimate',pc(x.historical_vol_prob_breakeven)],['Quote age',x.live_quote?'LIVE':(x.quote_age_hours==null?'—':num(x.quote_age_hours,1)+'h')]
+    ['Max debit',money(x.max_loss_per_contract)],['RV BE estimate',pc(x.historical_vol_prob_breakeven)],['Quote age',x.live_quote?'LIVE':(x.quote_age_hours==null?'—':num(x.quote_age_hours,2)+'h')],
+    ['Quote source',x.selected_quote_provider||x.provider||'—'],['Data confidence',(x.data_confidence||'unknown').toUpperCase()],['Provider agreement',x.provider_agreement_pct==null?'—':num(x.provider_agreement_pct,2)+'%'],['Execution-grade',x.execution_realtime?'YES':'NO']
   ].map(([a,b])=>'<div class="stat"><div class="label">'+a+'</div><div style="margin-top:7px;font-weight:700">'+b+'</div></div>').join('');
   const debit=(x.ask&&x.ask>0?x.ask:x.mid)||0;
   tradeMath.innerHTML='<div class="kv"><span>1-contract debit</span><b>'+money(debit*100)+'</b></div>'+
@@ -537,7 +543,10 @@ function renderOptions(){
   optRV.textContent=pc(o.realized_vol_20d);atmMove.textContent=pc(sum.atm_straddle_implied_move);atmExp.textContent=sum.atm_expiration?('Nearest reference expiration '+sum.atm_expiration):'Awaiting chain';optEarnings.textContent=er.days_to_earnings==null?'—':er.days_to_earnings+' days';
   optstatus.textContent=o.status||'Awaiting options data';
   optionsRows.innerHTML=Object.entries(o.horizons||{}).map(([h,x])=>'<tr><td>'+h+' days</td><td>'+pc(x.positive_rate)+'</td><td>'+pc(x.median_return)+'</td><td>'+pc(x.p10)+'</td><td>'+pc(x.p25)+'</td><td>'+pc(x.p75)+'</td><td>'+pc(x.p90)+'</td><td>'+pc(x.realized_move_1sd)+'</td></tr>').join('');
-  const oc=o.chain||{};chainNote.textContent=[oc.provider_warning,oc.quote_note||oc.error||'Awaiting option-chain refresh'].filter(Boolean).join(' · ');
+  const oc=o.chain||{},plist=(oc.providers||[]).map(p=>p.source+(p.feed?' ['+p.feed+']':'')).join(' + ');
+  const cc=oc.data_confidence_counts||{};
+  const confidenceSummary=Object.keys(cc).length?('confidence '+Object.entries(cc).map(([k,v])=>k+':'+v).join(', ')):'';
+  chainNote.textContent=[plist?('Providers: '+plist):'',oc.provider_warning,confidenceSummary,oc.quote_note||oc.error||'Awaiting option-chain refresh'].filter(Boolean).join(' · ');
   expFilter.innerHTML='<option value="all">All expirations</option>'+(oc.expirations||[]).map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('');
   renderChain();renderReturnOutlook();renderMarketWideOptions();updateMarketStreamSymbols();
 }
@@ -563,7 +572,8 @@ function selectContract(sym,strike,type,exp){
   contractStats.innerHTML=[
     ['Bid',money(x.bid)],['Ask',money(x.ask)],['Premium mid',money(x.mid)],['Breakeven',money(x.breakeven)],['IV',pc(x.iv)],
     ['Delta',num(x.delta,3)],['Theta/day',money(x.theta_per_contract_per_day)],['Vega/1pt',money(x.vega_per_contract_per_vol_point)],['Spread',pc(x.spread_pct)],['Open interest',x.open_interest],
-    ['Max debit',money(x.max_loss_per_contract)],['RV BE estimate',pc(x.historical_vol_prob_breakeven)],['Quote age',x.quote_age_hours==null?'—':num(x.quote_age_hours,1)+'h']
+    ['Max debit',money(x.max_loss_per_contract)],['RV BE estimate',pc(x.historical_vol_prob_breakeven)],['Quote age',x.live_quote?'LIVE':(x.quote_age_hours==null?'—':num(x.quote_age_hours,2)+'h')],
+    ['Quote source',x.selected_quote_provider||x.provider||'—'],['Data confidence',(x.data_confidence||'unknown').toUpperCase()],['Provider agreement',x.provider_agreement_pct==null?'—':num(x.provider_agreement_pct,2)+'%'],['Execution-grade',x.execution_realtime?'YES':'NO']
   ].map(([a,b])=>'<div class="stat"><div class="label">'+a+'</div><div style="margin-top:7px;font-weight:700">'+b+'</div></div>').join('');
   contractExplain.innerHTML=contractExplanation(x).map(v=>'<li>'+esc(v)+'</li>').join('');
   const checks=x.quality_checks||[];
