@@ -208,6 +208,14 @@
       "open_value": 0,
       "strategy_version": "v3_realtime_session",
       "market_session_open": true
+    },
+    {
+      "at": "2026-09-24T19:04:39.284809+00:00",
+      "equity": 10015.0,
+      "cash": 10015.0,
+      "open_value": 0,
+      "strategy_version": "v3_realtime_session",
+      "market_session_open": true
     }
   ],
   "decisions": [
@@ -398,10 +406,19 @@
       "action": "skip",
       "reason": "risk budget below one contract",
       "strategy_version": "v2_conservative"
+    },
+    {
+      "at": "2026-09-24T19:04:39.284809+00:00",
+      "ticker": "NVDA",
+      "contract": "NVDA261002C00210000",
+      "action": "skip",
+      "score": 79.7,
+      "reason": "real-time option data required for current strategy",
+      "strategy_version": "v3_realtime_session"
     }
   ],
-  "updated_at": "2026-09-24T18:07:59.387280+00:00",
-  "last_processed_snapshot": "2026-09-24T18:07:59.387019+00:00",
+  "updated_at": "2026-09-24T19:04:39.284809+00:00",
+  "last_processed_snapshot": "2026-09-24T19:04:39.284600+00:00",
   "strategy_version": "v3_realtime_session",
   "paper_market_session_open": true
 }
