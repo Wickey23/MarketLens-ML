@@ -64,6 +64,28 @@ def _tradier_expirations(ticker, max_expiries):
     return [str(x) for x in _as_list(dates) if x][:max_expiries]
 
 
+def _tradier_underlying_quote(ticker, now):
+    body=_tradier_get("markets/quotes",{"symbols":ticker,"greeks":"false"})
+    raw=(body.get("quotes") or {}).get("quote")
+    rows=_as_list(raw)
+    if not rows:
+        raise ValueError("Tradier underlying quote unavailable")
+    row=rows[0] or {}
+    bid=_f(row.get("bid")); ask=_f(row.get("ask")); last=_f(row.get("last"))
+    mid=(bid+ask)/2 if bid is not None and ask is not None and ask>=bid and (bid>0 or ask>0) else None
+    price=last if last is not None and last>0 else mid
+    if price is None or price<=0:
+        raise ValueError("Tradier underlying price unavailable")
+    quote_ms=max(_i(row.get("bid_date"),0),_i(row.get("ask_date"),0),_i(row.get("trade_date"),0))
+    quote_dt=datetime.fromtimestamp(quote_ms/1000,timezone.utc) if quote_ms else None
+    age=max(0.0,(now-quote_dt).total_seconds()/3600.0) if quote_dt else None
+    return {
+        "price":price,"bid":bid,"ask":ask,"last":last,
+        "quote_age_hours":_f(age),
+        "quote_time":quote_dt.isoformat() if quote_dt else None,
+    }
+
+
 def _tradier_rows_for_expiration(ticker, expiration, spot, market_today, now, strikes_each_side):
     body=_tradier_get("markets/options/chains",{
         "symbol":ticker,
@@ -127,16 +149,18 @@ def _tradier_option_snapshot(ticker, spot, annual_rv, max_expiries, strikes_each
     now=datetime.now(timezone.utc)
     market_today=datetime.now(ZoneInfo("America/New_York")).date()
     risk_free,risk_free_source=_risk_free_rate()
+    underlying=_tradier_underlying_quote(ticker,now)
+    market_spot=float(underlying["price"])
     expiries=_tradier_expirations(ticker,max_expiries)
     rows=[]
     for exp in expiries:
-        rows.extend(_tradier_rows_for_expiration(ticker,exp,spot,market_today,now,strikes_each_side))
+        rows.extend(_tradier_rows_for_expiration(ticker,exp,market_spot,market_today,now,strikes_each_side))
     liquid=[]
     for row in rows:
         if not row["mid"] or row["mid"]<=0 or not (row["open_interest"]>=25 or row["volume"]>=5):
             continue
         g=row.pop("provider_greeks",{}) or {}
-        enriched=enrich_contract(row,spot,annual_rv,risk_free)
+        enriched=enrich_contract(row,market_spot,annual_rv,risk_free)
         if g.get("delta") is not None: enriched["delta"]=g["delta"]
         if g.get("gamma") is not None: enriched["gamma"]=g["gamma"]
         if g.get("theta") is not None:
@@ -150,9 +174,11 @@ def _tradier_option_snapshot(ticker, spot, annual_rv, max_expiries, strikes_each
         enriched["greeks_source"]="Tradier / ORATS (hourly)"
         enriched["greeks_updated_at"]=g.get("updated_at")
         liquid.append(enriched)
-    liquid.sort(key=lambda r:(r["dte"],abs((r["strike"] or spot)-spot),r["spread_pct"] if r["spread_pct"] is not None else 99))
+    liquid.sort(key=lambda r:(r["dte"],abs((r["strike"] or market_spot)-market_spot),r["spread_pct"] if r["spread_pct"] is not None else 99))
     return {
         "source":"Tradier Brokerage API",
+        "underlying_price":market_spot,
+        "underlying_quote":underlying,
         "quote_note":"Production Tradier brokerage market data is real-time for U.S. stocks/options. Greeks and volatility are ORATS data updated hourly.",
         "retrieved_at":now.isoformat(),
         "risk_free_rate":risk_free,
@@ -287,11 +313,14 @@ def option_snapshot(ticker:str, spot:float, annual_rv:float|None=None, max_expir
     Prefer Tradier production data when a production brokerage token is configured;
     otherwise retain the yfinance fallback for research continuity.
     """
+    tradier_warning=None
     if os.getenv("TRADIER_ACCESS_TOKEN"):
         try:
             return _tradier_option_snapshot(ticker,spot,annual_rv,max_expiries,strikes_each_side)
-        except Exception:
-            pass
+        except Exception as exc:
+            code=getattr(exc,"code",None)
+            detail=f"HTTP {code}" if code is not None else type(exc).__name__
+            tradier_warning=f"Tradier unavailable ({detail}); using Yahoo fallback."
     t=yf.Ticker(ticker)
     expiries=list(t.options)[:max_expiries]
     rows=[]
@@ -352,6 +381,8 @@ def option_snapshot(ticker:str, spot:float, annual_rv:float|None=None, max_expir
     liquid.sort(key=lambda r:(r["dte"],abs((r["strike"] or spot)-spot),r["spread_pct"] if r["spread_pct"] is not None else 99))
     return {
         "source":"Yahoo Finance via yfinance",
+        "underlying_price":_f(spot),
+        "provider_warning":tradier_warning,
         "realtime":False,
         "greeks_frequency":"snapshot/model",
         "quote_note":"Quotes may be delayed or stale; verify with a brokerage before acting. Greeks are Black-Scholes estimates without dividend-yield or early-exercise adjustments, not exchange-provided values.",
