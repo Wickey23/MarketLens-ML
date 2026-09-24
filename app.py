@@ -11,12 +11,14 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from src.provider_router import choose_underlying_quote
+
 app = Flask(__name__)
 DATA = Path(__file__).with_name("data") / "dashboard.json"
 
 _TRIGGER_COOLDOWN_SECONDS = 30
 _TRIGGER_REMOTE_COOLDOWN_SECONDS = 300
-_LIVE_QUOTE_TTL_SECONDS = 10
+_LIVE_QUOTE_TTL_SECONDS = 5
 _RESEARCH_DATA_TTL_SECONDS = 15
 _trigger_last_seen = {}
 _live_quote_cache = {}
@@ -113,6 +115,9 @@ def _snapshot_quote(ticker):
         "exchange": None,
         "currency": None,
         "provider": "MarketLens research snapshot",
+        "provider_key":"snapshot",
+        "feed":"snapshot",
+        "consolidated":False,
         "realtime": False,
         "delayed": True,
         "note": "Near-live quote provider unavailable; showing the latest research snapshot.",
@@ -172,6 +177,9 @@ def _tradier_live_quote(ticker, token):
         "exchange":row.get("exch"),
         "currency":"USD",
         "provider":"Tradier Brokerage API",
+        "provider_key":"tradier",
+        "feed":"consolidated",
+        "consolidated":True,
         "realtime":True,
         "delayed":False,
         "note":"Production Tradier brokerage quote. Real-time availability depends on the configured account entitlement.",
@@ -210,9 +218,66 @@ def _finnhub_live_quote(ticker, api_key):
         "exchange":None,
         "currency":"USD",
         "provider":"Finnhub quote",
+        "provider_key":"finnhub",
+        "feed":"provider",
+        "consolidated":False,
         "realtime":True,
         "delayed":False,
         "note":"Provider-backed quote path. Actual exchange entitlements depend on the configured provider account.",
+    }
+
+
+def _alpaca_live_quote(ticker,key,secret):
+    feed=(os.getenv("ALPACA_STOCK_FEED") or "iex").strip().lower()
+    if feed not in ("sip","iex","delayed_sip"):
+        feed="iex"
+    symbol=urllib.parse.quote(ticker,safe="")
+    url=f"https://data.alpaca.markets/v2/stocks/{symbol}/snapshot?"+urllib.parse.urlencode({"feed":feed})
+    req=urllib.request.Request(
+        url,
+        headers={
+            "APCA-API-KEY-ID":key,
+            "APCA-API-SECRET-KEY":secret,
+            "Accept":"application/json",
+            "User-Agent":"MarketLens-ML/1.0",
+        },
+    )
+    with urllib.request.urlopen(req,timeout=5) as response:
+        body=json.loads(response.read().decode("utf-8"))
+    q=body.get("latestQuote") or body.get("latest_quote") or {}
+    tr=body.get("latestTrade") or body.get("latest_trade") or {}
+    daily=body.get("dailyBar") or body.get("daily_bar") or {}
+    prevbar=body.get("prevDailyBar") or body.get("prev_daily_bar") or {}
+    def num(v):
+        try:return float(v) if v is not None else None
+        except Exception:return None
+    bid=num(q.get("bp") if "bp" in q else q.get("bid_price"))
+    ask=num(q.get("ap") if "ap" in q else q.get("ask_price"))
+    last=num(tr.get("p") if "p" in tr else tr.get("price"))
+    price=last if last is not None and last>0 else ((bid+ask)/2 if bid is not None and ask is not None and ask>=bid else None)
+    if price is None or price<=0:
+        raise ValueError("Alpaca quote unavailable")
+    prev=num(prevbar.get("c") if "c" in prevbar else prevbar.get("close"))
+    ts=q.get("t") or q.get("timestamp") or tr.get("t") or tr.get("timestamp")
+    consolidated=feed=="sip"
+    delayed=feed=="delayed_sip"
+    return {
+        "ticker":ticker,"price":price,"previous_close":prev,
+        "open":num(daily.get("o") if "o" in daily else daily.get("open")),
+        "high":num(daily.get("h") if "h" in daily else daily.get("high")),
+        "low":num(daily.get("l") if "l" in daily else daily.get("low")),
+        "bid":bid,"ask":ask,"last":last,
+        "change":(price-prev) if prev not in (None,0) else None,
+        "change_pct":((price/prev)-1) if prev not in (None,0) else None,
+        "market_timestamp":ts,
+        "exchange":None,"currency":"USD",
+        "provider":"Alpaca Market Data",
+        "provider_key":"alpaca_sip" if consolidated else ("yahoo" if delayed else "alpaca_iex"),
+        "feed":feed,
+        "consolidated":consolidated,
+        "realtime":not delayed,
+        "delayed":delayed,
+        "note":"Alpaca stock snapshot. SIP is consolidated; IEX is real-time exchange-subset data.",
     }
 
 
@@ -275,6 +340,9 @@ def _yahoo_live_quote(ticker):
         "currency": meta.get("currency"),
         "market_state": meta.get("marketState"),
         "provider": "Yahoo Finance chart",
+        "provider_key":"yahoo",
+        "feed":"best-effort",
+        "consolidated":False,
         "realtime": False,
         "delayed": True,
         "note": "Best-effort near-live underlying quote; may be delayed. Options and model evidence remain research snapshots.",
@@ -287,27 +355,36 @@ def live_quote(ticker):
     if cached and now - cached["at"] < _LIVE_QUOTE_TTL_SECONDS:
         return cached["payload"]
 
-    out=None
+    candidates=[]
+    errors=[]
     tradier_token=os.getenv("TRADIER_ACCESS_TOKEN")
     if tradier_token:
-        try:
-            out=_tradier_live_quote(ticker,tradier_token)
-        except Exception:
-            out=None
-    provider_key=os.getenv("FINNHUB_API_KEY")
-    if out is None and provider_key:
-        try:
-            out=_finnhub_live_quote(ticker,provider_key)
-        except Exception:
-            out=None
-    if out is None:
-        try:
-            out=_yahoo_live_quote(ticker)
-        except Exception:
-            out=_snapshot_quote(ticker)
+        try:candidates.append(_tradier_live_quote(ticker,tradier_token))
+        except Exception as exc:errors.append({"provider":"Tradier","error":type(exc).__name__})
 
+    alpaca_key=os.getenv("ALPACA_API_KEY_ID") or os.getenv("APCA_API_KEY_ID")
+    alpaca_secret=os.getenv("ALPACA_API_SECRET_KEY") or os.getenv("APCA_API_SECRET_KEY")
+    if alpaca_key and alpaca_secret:
+        try:candidates.append(_alpaca_live_quote(ticker,alpaca_key,alpaca_secret))
+        except Exception as exc:errors.append({"provider":"Alpaca","error":type(exc).__name__})
+
+    provider_key=os.getenv("FINNHUB_API_KEY")
+    if provider_key:
+        try:candidates.append(_finnhub_live_quote(ticker,provider_key))
+        except Exception as exc:errors.append({"provider":"Finnhub","error":type(exc).__name__})
+
+    try:candidates.append(_yahoo_live_quote(ticker))
+    except Exception as exc:errors.append({"provider":"Yahoo","error":type(exc).__name__})
+
+    out=choose_underlying_quote(candidates,now=datetime.now(timezone.utc))
+    if out is None:
+        out=_snapshot_quote(ticker)
     if out is not None:
+        out["ticker"]=ticker
+        out["delayed"]=not bool(out.get("realtime"))
+        out["provider_errors"]=errors
         out["served_at"] = datetime.now(timezone.utc).isoformat()
+        out["note"]="MarketLens selected the freshest trustworthy configured quote; authoritative real-time feeds outrank indicative/delayed sources."
         _live_quote_cache[ticker] = {"at": now, "payload": out}
     return out
 
@@ -393,11 +470,7 @@ def api_live_quotes():
             "retrieved_at": datetime.now(timezone.utc).isoformat(),
             "quotes": quotes,
             "errors": errors,
-            "quote_note": (
-                "Real-time Tradier Brokerage underlying quotes."
-                if os.getenv("TRADIER_ACCESS_TOKEN")
-                else ("Provider-backed underlying quotes." if os.getenv("FINNHUB_API_KEY") else "Near-live Yahoo Finance underlying quotes. Exchange/broker data may be delayed or differ.")
-            ),
+            "quote_note":"Multi-provider quote router: authoritative real-time feeds outrank indicative/delayed sources; provider agreement is reported with each quote.",
         }
     )
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
