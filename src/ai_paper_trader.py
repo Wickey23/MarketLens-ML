@@ -1,12 +1,15 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone, date, time as dt_time
 from pathlib import Path
 from collections import defaultdict
+from zoneinfo import ZoneInfo
 import json
 
 STARTING_CASH = 10000.0
 STATE_PATH = Path("data/ai_paper_portfolio.json")
+CURRENT_STRATEGY_VERSION = "v3_realtime_session"
+MARKET_TZ = ZoneInfo("America/New_York")
 
 def load_state(path=STATE_PATH):
     if path.exists():
@@ -65,6 +68,16 @@ def valuation_mark(pos,tickers):
     return float(pos.get("entry_price") or 0.0)
 
 def quote_age_hours(contract, now_dt):
+    # Prefer the provider's quote timestamp. A last-trade timestamp is only a
+    # fallback because a recent trade does not prove the current bid/ask is fresh.
+    provided=contract.get("quote_age_hours")
+    if provided is not None:
+        try:
+            value=float(provided)
+            if value>=0:
+                return value
+        except Exception:
+            pass
     raw=contract.get("last_trade")
     if not raw:
         return None
@@ -76,20 +89,34 @@ def quote_age_hours(contract, now_dt):
     except Exception:
         return None
 
+def is_regular_market_session(now_dt):
+    """Conservative U.S. options execution window for autonomous paper fills."""
+    if now_dt.tzinfo is None:
+        now_dt=now_dt.replace(tzinfo=timezone.utc)
+    local=now_dt.astimezone(MARKET_TZ)
+    if local.weekday()>=5:
+        return False
+    current=local.time().replace(tzinfo=None)
+    return dt_time(9,35)<=current<=dt_time(15,55)
+
 def days_to_expiry(expiration, today):
     try:
         return (date.fromisoformat(expiration)-date.fromisoformat(today)).days
     except Exception:
         return None
 
-def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.02,min_score=75.0,min_dte=3,max_dte=45,max_spread=.20,max_theta_pct=.03):
-    """Rule-based autonomous paper portfolio driven only by MarketLens research.
+def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.02,min_score=75.0,min_dte=3,max_dte=45,max_spread=.20,max_theta_pct=.03,max_quote_age_hours=1.0,now_dt=None):
+    """Rule-based autonomous PAPER portfolio driven only by MarketLens research.
 
-    It never places a brokerage order. Entries/exits are recorded against delayed
-    research quotes so the strategy can be evaluated prospectively.
+    The current strategy never places a brokerage order, requires a real-time
+    option-chain source for new entries, and only simulates normal entries/exits
+    during a conservative regular-market execution window.
     """
     state=state or load_state()
-    now_dt=datetime.now(timezone.utc)
+    now_dt=now_dt or datetime.now(timezone.utc)
+    if now_dt.tzinfo is None:
+        now_dt=now_dt.replace(tzinfo=timezone.utc)
+    market_session_open=is_regular_market_session(now_dt)
     now=now_dt.isoformat()
     snapshot_id=snapshot.get("generated_at") or snapshot.get("fast_generated_at")
     if snapshot_id and state.get("last_processed_snapshot")==snapshot_id:
@@ -105,27 +132,31 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
         remaining=days_to_expiry(p["expiration"],today)
         reason=None
         if p["expiration"]<today:
+            # Expired options settle from intrinsic value. Never use a stale
+            # post-expiry option bid if an old contract remains in the snapshot.
             reason="expiration"
-            if mark is None:
-                t=tickers.get(p["ticker"]) or {}
-                spot=_expiration_spot(t,p["expiration"])
-                if spot is not None:
-                    intrinsic=max(0.0,float(spot)-float(p["strike"])) if p["type"]=="call" else max(0.0,float(p["strike"])-float(spot))
-                    mark=intrinsic
-                    pnl_pct=((mark/p["entry_price"])-1) if p["entry_price"]>0 else None
+            t=tickers.get(p["ticker"]) or {}
+            spot=_expiration_spot(t,p["expiration"])
+            if spot is not None:
+                intrinsic=max(0.0,float(spot)-float(p["strike"])) if p["type"]=="call" else max(0.0,float(p["strike"])-float(spot))
+                mark=intrinsic
+                pnl_pct=((mark/p["entry_price"])-1) if p["entry_price"]>0 else None
+            else:
+                mark=None
         elif pnl_pct is not None and pnl_pct>=.50: reason="profit_target"
         elif pnl_pct is not None and pnl_pct<=-.35: reason="risk_limit"
         elif remaining is not None and remaining<=0:
             # Apply this to legacy positions too so an older strategy cannot
             # remain stuck in a same-day-expiry contract indefinitely.
             reason="time_risk"
-        elif p.get("strategy_version")=="v2_conservative":
+        elif p.get("strategy_version") in ("v2_conservative",CURRENT_STRATEGY_VERSION):
             if remaining is not None and remaining<=1:
                 reason="time_risk"
             elif pnl_pct is not None and pnl_pct>=.25 and remaining is not None and remaining<=3:
                 reason="profit_protection"
-        p["exit_signal"]=reason or "hold"
-        if reason and mark is not None:
+        can_execute=reason=="expiration" or market_session_open
+        p["exit_signal"]=(reason if can_execute else f"{reason}_waiting_market") if reason else "hold"
+        if reason and mark is not None and can_execute:
             proceeds=mark*100*p["qty"]
             state["cash"]+=proceeds
             p.update({"exit_price":mark,"closed_at":now,"exit_reason":reason,
@@ -146,8 +177,13 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
     held={p["contract_key"] for p in state["open"]}
     candidates=[]
     for ticker,t in tickers.items():
+        if not market_session_open:
+            continue
         radar=((t.get("options") or {}).get("opportunity_radar") or {})
-        chain=(((t.get("options") or {}).get("chain") or {}).get("contracts") or [])
+        chain_obj=((t.get("options") or {}).get("chain") or {})
+        chain=chain_obj.get("contracts") or []
+        chain_source=chain_obj.get("source")
+        chain_realtime=chain_obj.get("realtime") is True
         cmap={contract_key(x):x for x in chain}
         guidance=(radar.get("guidance") or {})
         guided=guidance.get("best_overall") if guidance.get("state")=="strong_candidates" else None
@@ -168,9 +204,10 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
             ask=q.get("ask")
             age=quote_age_hours(q,now_dt)
             guard_reasons=[]
+            if not chain_realtime: guard_reasons.append("real-time option data required for current strategy")
             if dte is None or int(dte)<min_dte or int(dte)>max_dte: guard_reasons.append("DTE outside autonomous policy")
             if bid is None or ask is None or float(bid)<=0 or float(ask)<=0 or float(ask)<float(bid): guard_reasons.append("two-sided executable quote unavailable")
-            if age is None or age>96: guard_reasons.append("option quote is stale or timestamp unavailable")
+            if age is None or age>max_quote_age_hours: guard_reasons.append("option quote is stale or timestamp unavailable")
             if spread is not None and float(spread)>max_spread: guard_reasons.append("spread above autonomous policy")
             if theta is not None and float(theta)>max_theta_pct: guard_reasons.append("theta burden above autonomous policy")
             if iv is not None and (float(iv)<.03 or float(iv)>5.0): guard_reasons.append("implausible IV for autonomous entry")
@@ -178,14 +215,14 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
             if ev is None or float(ev)<=0: guard_reasons.append("historical expected payoff is not positive")
             if guard_reasons:
                 state["decisions"].append({"at":now,"ticker":ticker,"contract":key,"action":"skip","score":r.get("score"),
-                                           "reason":"; ".join(guard_reasons),"strategy_version":"v2_conservative"})
+                                           "reason":"; ".join(guard_reasons),"strategy_version":CURRENT_STRATEGY_VERSION})
                 continue
-            candidates.append((candidate_score,ticker,r,q))
+            candidates.append((candidate_score,ticker,r,q,chain_source,chain_realtime))
     candidates.sort(reverse=True,key=lambda z:z[0])
 
     # Fixed fractional premium-at-risk sizing, capped at one new contract group per ticker.
     active_tickers={p["ticker"] for p in state["open"]}
-    for score,ticker,r,q in candidates:
+    for score,ticker,r,q,chain_source,chain_realtime in candidates:
         if len(state["open"])>=max_positions or ticker in active_tickers:
             continue
         entry=(q.get("ask") if q.get("ask") and q.get("ask")>0 else q.get("mid"))
@@ -196,7 +233,7 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
         qty=int(budget//(entry*100))
         key=contract_key(q)
         if qty<1:
-            state["decisions"].append({"at":now,"ticker":ticker,"contract":key,"action":"skip","reason":"risk budget below one contract","strategy_version":"v2_conservative"})
+            state["decisions"].append({"at":now,"ticker":ticker,"contract":key,"action":"skip","reason":"risk budget below one contract","strategy_version":CURRENT_STRATEGY_VERSION})
             continue
         cost=entry*100*qty
         state["cash"]-=cost
@@ -207,18 +244,23 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
              "entry_spread_pct":q.get("spread_pct"),"entry_theta_cost_pct_per_day":q.get("theta_cost_pct_per_day"),
              "entry_regime":t.get("regime"),"entry_model_auc":(t.get("evidence") or {}).get("mean_roc_auc"),
              "entry_prob_profit":r.get("prob_profit"),"entry_expected_pnl":r.get("expected_pnl_per_contract"),
-             "entry_scope":r.get("historical_scope"),"strategy_version":"v2_conservative","entry_quote_age_hours":quote_age_hours(q,now_dt),"entry_reasons":r.get("reasons") or [],
+             "entry_scope":r.get("historical_scope"),"strategy_version":CURRENT_STRATEGY_VERSION,
+             "entry_market_data_source":chain_source,"entry_market_data_realtime":chain_realtime,
+             "entry_quote_age_hours":quote_age_hours(q,now_dt),"entry_reasons":r.get("reasons") or [],
              "entry_risks":r.get("risks") or [],"entry_research_generated_at":snapshot.get("generated_at")}
         state["open"].append(pos); active_tickers.add(ticker)
         state["decisions"].append({"at":now,"ticker":ticker,"contract":key,"action":"paper_buy",
-                                   "qty":qty,"price":entry,"score":score,"strategy_version":"v2_conservative"})
+                                   "qty":qty,"price":entry,"score":score,"strategy_version":CURRENT_STRATEGY_VERSION})
 
     open_value=sum(valuation_mark(p,tickers)*100*p["qty"] for p in state["open"])
     equity=state["cash"]+open_value
-    state["equity_history"].append({"at":now,"equity":equity,"cash":state["cash"],"open_value":open_value})
+    state["equity_history"].append({"at":now,"equity":equity,"cash":state["cash"],"open_value":open_value,
+                                    "strategy_version":CURRENT_STRATEGY_VERSION,"market_session_open":market_session_open})
     state["equity_history"]=state["equity_history"][-1000:]
     state["decisions"]=state.get("decisions",[])[-2000:]
     state["updated_at"]=now
+    state["strategy_version"]=CURRENT_STRATEGY_VERSION
+    state["paper_market_session_open"]=market_session_open
     state["last_processed_snapshot"]=snapshot_id
     return state
 
