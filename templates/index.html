@@ -570,6 +570,7 @@ function openMarketCandidate(ticker,sym,paper=false){
 }
 function renderMarketWideOptions(){
   const el=document.getElementById('marketWideOptions'),leaders=document.getElementById('marketWideLeaders');if(!el||!P)return;
+  const backend=P.market_guidance||{};
   let overall=[],upside=[],probability=[];
   (P.tickers||[]).forEach(t=>{
     const g=(((t.options||{}).opportunity_radar||{}).guidance)||{};
@@ -578,13 +579,14 @@ function renderMarketWideOptions(){
     if(g.highest_upside)upside.push(Object.assign({ticker:t.ticker},g.highest_upside));
     if(g.higher_probability)probability.push(Object.assign({ticker:t.ticker},g.higher_probability));
   });
+  overall=(backend.top_overall&&backend.top_overall.length)?backend.top_overall:overall;
   overall.sort((a,b)=>(b.combined_evidence_score||b.score||0)-(a.combined_evidence_score||a.score||0));
   upside.sort((a,b)=>(b.expected_return_on_debit||-1e9)-(a.expected_return_on_debit||-1e9));
   probability.sort((a,b)=>(((b.prob_profit_ci95||[])[0]||0)-((a.prob_profit_ci95||[])[0]||0))||((b.prob_profit||0)-(a.prob_profit||0)));
   const leaderRows=[
-    ['Strongest overall',overall[0],'Highest combined all-data evidence across the current deeply analyzed universe.'],
-    ['Highest historical upside',upside[0],'Highest historical mean return on debit among contracts that already cleared the quality gates.'],
-    ['Highest historical profit frequency',probability[0],'Highest uncertainty-adjusted historical profit frequency among qualifying contracts.']
+    ['Strongest overall',backend.strongest_overall||overall[0],'Highest combined all-data evidence across the current deeply analyzed universe.'],
+    ['Highest historical upside',backend.highest_historical_upside||upside[0],'Highest historical mean return on debit among contracts that already cleared the quality gates.'],
+    ['Highest historical profit frequency',backend.highest_historical_profit_frequency||probability[0],'Highest uncertainty-adjusted historical profit frequency among qualifying contracts.']
   ].filter(x=>x[1]);
   if(leaders){
     leaders.innerHTML=leaderRows.length?leaderRows.map(([lens,x,why])=>{
