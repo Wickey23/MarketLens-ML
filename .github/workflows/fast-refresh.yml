@@ -26,6 +26,7 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       MARKETLENS_TICKER: ${{ github.event.inputs.ticker }}
       TRADIER_ACCESS_TOKEN: ${{ secrets.TRADIER_ACCESS_TOKEN }}
