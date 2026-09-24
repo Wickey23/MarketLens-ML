@@ -2,6 +2,7 @@ from flask import Flask, jsonify, render_template, request
 from datetime import datetime, timezone
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import hmac
 import json
 import os
 import re
@@ -14,9 +15,45 @@ app = Flask(__name__)
 DATA = Path(__file__).with_name("data") / "dashboard.json"
 
 _TRIGGER_COOLDOWN_SECONDS = 30
+_TRIGGER_REMOTE_COOLDOWN_SECONDS = 300
 _LIVE_QUOTE_TTL_SECONDS = 10
 _trigger_last_seen = {}
 _live_quote_cache = {}
+
+
+def _control_authorized():
+    """Protect expensive/control-plane endpoints when an app key is configured."""
+    expected=os.getenv("MARKETLENS_CONTROL_KEY")
+    if not expected:
+        return True
+    provided=request.headers.get("X-MarketLens-Key") or ""
+    return hmac.compare_digest(str(provided),str(expected))
+
+
+def _latest_fast_refresh_age_seconds(token):
+    """Best-effort cross-instance cooldown using GitHub's own run history."""
+    url="https://api.github.com/repos/Wickey23/MarketLens-ML/actions/workflows/fast-refresh.yml/runs?branch=main&per_page=1"
+    req=urllib.request.Request(
+        url,
+        headers={
+            "Authorization":f"Bearer {token}",
+            "Accept":"application/vnd.github+json",
+            "X-GitHub-Api-Version":"2022-11-28",
+            "User-Agent":"MarketLens-ML",
+        },
+    )
+    with urllib.request.urlopen(req,timeout=6) as response:
+        body=json.loads(response.read().decode("utf-8"))
+    rows=body.get("workflow_runs") or []
+    if not rows:
+        return None
+    created=rows[0].get("created_at")
+    if not created:
+        return None
+    dt=datetime.fromisoformat(str(created).replace("Z","+00:00"))
+    if dt.tzinfo is None:
+        dt=dt.replace(tzinfo=timezone.utc)
+    return max(0.0,(datetime.now(timezone.utc)-dt.astimezone(timezone.utc)).total_seconds())
 
 
 def read_data():
@@ -387,6 +424,8 @@ def market_stream_status():
 
 @app.post("/api/market-stream/session")
 def market_stream_session():
+    if not _control_authorized():
+        return jsonify({"ok":False,"error":"Control authorization required","requires_control_key":True}),401
     if not os.getenv("TRADIER_ACCESS_TOKEN"):
         return jsonify({
             "ok":False,
@@ -420,12 +459,15 @@ def health():
             "live_quote_ttl_seconds": _LIVE_QUOTE_TTL_SECONDS,
             "live_provider": ("tradier-rest+stream" if os.getenv("TRADIER_ACCESS_TOKEN") else ("finnhub" if os.getenv("FINNHUB_API_KEY") else "yahoo-fallback")),
             "market_stream_configured": bool(os.getenv("TRADIER_ACCESS_TOKEN")),
+            "control_key_configured": bool(os.getenv("MARKETLENS_CONTROL_KEY")),
         }
     )
 
 
 @app.post("/api/run-research")
 def run_research():
+    if not _control_authorized():
+        return jsonify({"ok":False,"error":"Control authorization required","requires_control_key":True}),401
     body = request.get_json(silent=True) or {}
     ticker = str(body.get("ticker") or "").upper().strip()
     if ticker and not re.fullmatch(r"[A-Z][A-Z0-9.\-]{0,7}", ticker):
@@ -442,6 +484,13 @@ def run_research():
     if last is not None and now - last < _TRIGGER_COOLDOWN_SECONDS:
         wait = max(1, int(_TRIGGER_COOLDOWN_SECONDS - (now - last)))
         return jsonify({"ok": False, "error": f"Please wait {wait}s before starting another refresh"}), 429
+    try:
+        remote_age=_latest_fast_refresh_age_seconds(token)
+    except Exception:
+        remote_age=None
+    if remote_age is not None and remote_age < _TRIGGER_REMOTE_COOLDOWN_SECONDS:
+        wait=max(1,int(_TRIGGER_REMOTE_COOLDOWN_SECONDS-remote_age))
+        return jsonify({"ok":False,"error":f"A refresh already ran recently. Try again in about {wait}s"}),429
     _trigger_last_seen[client] = now
 
     payload = {"ref": "main"}
