@@ -145,6 +145,20 @@ def merge(old,new,learning=None):
     return new
 
 
+def scan_is_fresh(scan,max_age_hours=2.0):
+    ts=(scan or {}).get("generated_at")
+    if not ts:
+        return False
+    try:
+        dt=datetime.fromisoformat(str(ts).replace("Z","+00:00"))
+        if dt.tzinfo is None:
+            dt=dt.replace(tzinfo=timezone.utc)
+        age=(datetime.now(timezone.utc)-dt.astimezone(timezone.utc)).total_seconds()/3600.0
+        return 0<=age<=max_age_hours
+    except Exception:
+        return False
+
+
 def main():
     current_learning=learning_profile(load_state())
     requested=(os.getenv("MARKETLENS_TICKER") or "").strip().upper()
@@ -160,7 +174,13 @@ def main():
     if requested:
         tickers=[requested]
     else:
-        scan=choose_research_universe(DEFAULT_TICKERS,p["manual_tickers"],max_total=12)
+        prior_scan=p.get("universe_scan") or {}
+        same_manual=list(prior_scan.get("manual") or [])==list(p["manual_tickers"])
+        if scan_is_fresh(prior_scan,2.0) and same_manual and prior_scan.get("selected"):
+            scan=prior_scan
+            scan["reused_at"]=datetime.now(timezone.utc).isoformat()
+        else:
+            scan=choose_research_universe(DEFAULT_TICKERS,p["manual_tickers"],max_total=12)
         p["universe_scan"]=scan
         tickers=scan["selected"]
 
