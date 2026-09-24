@@ -509,13 +509,16 @@ def _create_tradier_market_session():
 
 @app.get("/api/market-stream/status")
 def market_stream_status():
-    configured=bool(os.getenv("TRADIER_ACCESS_TOKEN"))
+    tradier=bool(os.getenv("TRADIER_ACCESS_TOKEN"))
+    alpaca=bool((os.getenv("ALPACA_API_KEY_ID") or os.getenv("APCA_API_KEY_ID")) and (os.getenv("ALPACA_API_SECRET_KEY") or os.getenv("APCA_API_SECRET_KEY")))
     return jsonify({
-        "configured":configured,
-        "provider":"tradier" if configured else "polling-fallback",
-        "mode":"websocket" if configured else "near-live-polling",
-        "stocks":"real-time with eligible Tradier brokerage data access" if configured else "near-live Yahoo/Finnhub overlay",
-        "options":"real-time with eligible Tradier brokerage data access" if configured else "scheduled snapshot",
+        "configured":tradier,
+        "provider":"tradier-stream" if tradier else "multi-provider-polling",
+        "mode":"websocket+multi-provider-rest" if tradier else "multi-provider-rest",
+        "stocks":"MarketLens REST router checks all configured providers; Tradier streaming overlays ticks when available.",
+        "options":"MarketLens research merges Tradier, Alpaca and Yahoo when configured; only consolidated real-time quotes qualify for autonomous paper entries.",
+        "tradier_configured":tradier,
+        "alpaca_configured":alpaca,
     })
 
 
@@ -561,7 +564,10 @@ def health():
             "data_branch": "market-data",
             "live_quote_ttl_seconds": _LIVE_QUOTE_TTL_SECONDS,
             "research_data_ttl_seconds": _RESEARCH_DATA_TTL_SECONDS,
-            "live_provider": ("tradier-rest+stream" if os.getenv("TRADIER_ACCESS_TOKEN") else ("finnhub" if os.getenv("FINNHUB_API_KEY") else "yahoo-fallback")),
+            "live_provider":"multi-provider-router",
+            "tradier_configured":bool(os.getenv("TRADIER_ACCESS_TOKEN")),
+            "alpaca_configured":bool((os.getenv("ALPACA_API_KEY_ID") or os.getenv("APCA_API_KEY_ID")) and (os.getenv("ALPACA_API_SECRET_KEY") or os.getenv("APCA_API_SECRET_KEY"))),
+            "finnhub_configured":bool(os.getenv("FINNHUB_API_KEY")),
             "market_stream_configured": bool(os.getenv("TRADIER_ACCESS_TOKEN")),
             "control_key_configured": bool(os.getenv("MARKETLENS_CONTROL_KEY")),
         }
