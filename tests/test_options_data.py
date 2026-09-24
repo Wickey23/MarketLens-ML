@@ -24,6 +24,11 @@ def test_enriched_contract_keeps_core_risk_fields():
 
 def test_tradier_option_snapshot_uses_realtime_chain(monkeypatch):
     def fake_get(path,params):
+        if path.endswith("quotes"):
+            return {"quotes":{"quote":{
+                "symbol":"ABC","bid":99.9,"ask":100.1,"last":100.0,
+                "bid_date":4072381200000,"ask_date":4072381200000,"trade_date":4072381200000
+            }}}
         if path.endswith("expirations"):
             return {"expirations":{"date":["2099-01-16"]}}
         return {"options":{"option":[{
@@ -49,6 +54,7 @@ def test_tradier_option_snapshot_uses_realtime_chain(monkeypatch):
     out=od._tradier_option_snapshot("ABC",100.0,0.20,1,8)
     assert out["source"]=="Tradier Brokerage API"
     assert out["realtime"] is True
+    assert out["underlying_price"]==100.0
     assert out["greeks_frequency"]=="hourly"
     q=out["contracts"][0]
     assert q["contract_symbol"]=="ABC990116C00100000"
