@@ -11,6 +11,7 @@ PROVIDER_QUALITY = {
     "alpaca_iex": 80,
     "finnhub": 70,
     "alpaca_indicative": 55,
+    "alpaca_delayed": 40,
     "yahoo": 25,
     "snapshot": 10,
 }
@@ -181,11 +182,14 @@ def choose_option_quote(candidates,now=None):
     out["provider_agreement_pct"]=(diff*100 if diff is not None else None)
     out["quote_age_seconds"]=quote_age_seconds(selected,now)
     out["quote_age_hours"]=(out["quote_age_seconds"]/3600.0 if out["quote_age_seconds"] is not None else None)
+    age=out.get("quote_age_seconds")
     out["execution_realtime"]=bool(
         out.get("realtime") is True
         and out.get("consolidated") is True
         and _quality(out)>=90
         and confidence!="conflict"
+        and age is not None
+        and age<=60
     )
     out["provider_candidates"]=_compact_candidates(valid,now)
     return out
