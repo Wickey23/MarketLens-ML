@@ -11,7 +11,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from src.provider_router import choose_underlying_quote
+from src.provider_router import choose_underlying_quote, choose_option_quote
 
 app = Flask(__name__)
 DATA = Path(__file__).with_name("data") / "dashboard.json"
@@ -19,9 +19,11 @@ DATA = Path(__file__).with_name("data") / "dashboard.json"
 _TRIGGER_COOLDOWN_SECONDS = 30
 _TRIGGER_REMOTE_COOLDOWN_SECONDS = 300
 _LIVE_QUOTE_TTL_SECONDS = 5
+_LIVE_OPTION_TTL_SECONDS = 3
 _RESEARCH_DATA_TTL_SECONDS = 15
 _trigger_last_seen = {}
 _live_quote_cache = {}
+_live_option_quote_cache = {}
 _research_data_cache = {"at":None,"payload":None}
 
 
@@ -389,6 +391,100 @@ def live_quote(ticker):
     return out
 
 
+def _tradier_live_option_quote(symbol,token):
+    query=urllib.parse.urlencode({"symbols":symbol,"greeks":"true"})
+    req=urllib.request.Request(
+        f"https://api.tradier.com/v1/markets/quotes?{query}",
+        headers={"Authorization":f"Bearer {token}","Accept":"application/json","User-Agent":"MarketLens-ML/1.0"},
+    )
+    with urllib.request.urlopen(req,timeout=5) as response:
+        body=json.loads(response.read().decode("utf-8"))
+    row=(body.get("quotes") or {}).get("quote")
+    if isinstance(row,list):row=row[0] if row else None
+    if not isinstance(row,dict):raise ValueError("Tradier option quote unavailable")
+    def num(v):
+        try:return float(v) if v is not None else None
+        except Exception:return None
+    bid=num(row.get("bid"));ask=num(row.get("ask"));last=num(row.get("last"))
+    ts=max(int(num(row.get("bid_date")) or 0),int(num(row.get("ask_date")) or 0))
+    return {
+        "provider":"Tradier Brokerage API","provider_key":"tradier","feed":"consolidated",
+        "realtime":True,"consolidated":True,"bid":bid,"ask":ask,"last":last,
+        "quote_time":datetime.fromtimestamp(ts/1000,timezone.utc).isoformat() if ts else None,
+    }
+
+
+def _alpaca_live_option_quote(symbol,key,secret):
+    feed=(os.getenv("ALPACA_OPTIONS_FEED") or "indicative").strip().lower()
+    if feed not in ("opra","indicative"):feed="indicative"
+    query=urllib.parse.urlencode({"symbols":symbol,"feed":feed})
+    req=urllib.request.Request(
+        f"https://data.alpaca.markets/v1beta1/options/quotes/latest?{query}",
+        headers={"APCA-API-KEY-ID":key,"APCA-API-SECRET-KEY":secret,"Accept":"application/json","User-Agent":"MarketLens-ML/1.0"},
+    )
+    with urllib.request.urlopen(req,timeout=5) as response:
+        body=json.loads(response.read().decode("utf-8"))
+    quotes=body.get("quotes") or {}
+    row=quotes.get(symbol) if isinstance(quotes,dict) else None
+    if not isinstance(row,dict):raise ValueError("Alpaca option quote unavailable")
+    def num(v):
+        try:return float(v) if v is not None else None
+        except Exception:return None
+    consolidated=feed=="opra"
+    return {
+        "provider":"Alpaca OPRA" if consolidated else "Alpaca indicative options",
+        "provider_key":"alpaca_opra" if consolidated else "alpaca_indicative",
+        "feed":feed,"realtime":True,"consolidated":consolidated,
+        "bid":num(row.get("bp") if "bp" in row else row.get("bid_price")),
+        "ask":num(row.get("ap") if "ap" in row else row.get("ask_price")),
+        "last":None,
+        "quote_time":row.get("t") or row.get("timestamp"),
+    }
+
+
+def _snapshot_option_quote(symbol):
+    payload=read_data()
+    for t in payload.get("tickers") or []:
+        for row in (((t.get("options") or {}).get("chain") or {}).get("contracts") or []):
+            if str(row.get("contract_symbol") or "").upper()==symbol:
+                return {
+                    "provider":row.get("selected_quote_provider") or row.get("provider") or "MarketLens option snapshot",
+                    "provider_key":row.get("selected_quote_provider_key") or row.get("provider_key") or "snapshot",
+                    "feed":row.get("selected_quote_feed") or row.get("feed") or "snapshot",
+                    "realtime":bool(row.get("execution_realtime")),
+                    "consolidated":bool(row.get("consolidated")),
+                    "bid":row.get("bid"),"ask":row.get("ask"),"last":row.get("last"),
+                    "quote_time":row.get("quote_time") or row.get("last_trade"),
+                }
+    return None
+
+
+def live_option_quote(symbol):
+    now_mono=time.monotonic()
+    cached=_live_option_quote_cache.get(symbol)
+    if cached and now_mono-cached["at"]<_LIVE_OPTION_TTL_SECONDS:
+        return cached["payload"]
+    candidates=[];errors=[]
+    token=os.getenv("TRADIER_ACCESS_TOKEN")
+    if token:
+        try:candidates.append(_tradier_live_option_quote(symbol,token))
+        except Exception as exc:errors.append({"provider":"Tradier","error":type(exc).__name__})
+    key=os.getenv("ALPACA_API_KEY_ID") or os.getenv("APCA_API_KEY_ID")
+    secret=os.getenv("ALPACA_API_SECRET_KEY") or os.getenv("APCA_API_SECRET_KEY")
+    if key and secret:
+        try:candidates.append(_alpaca_live_option_quote(symbol,key,secret))
+        except Exception as exc:errors.append({"provider":"Alpaca","error":type(exc).__name__})
+    snap=_snapshot_option_quote(symbol)
+    if snap:candidates.append(snap)
+    out=choose_option_quote(candidates,now=datetime.now(timezone.utc))
+    if out is None:return None
+    out["symbol"]=symbol
+    out["provider_errors"]=errors
+    out["served_at"]=datetime.now(timezone.utc).isoformat()
+    _live_option_quote_cache[symbol]={"at":now_mono,"payload":out}
+    return out
+
+
 def live_quotes(tickers):
     quotes = []
     errors = []
@@ -448,6 +544,19 @@ def api_live_quote():
         return jsonify({"ok": False, "error": "Quote unavailable", "ticker": ticker}), 502
     response = jsonify({"ok": True, **quote})
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return response
+
+
+@app.get("/api/live-option-quote")
+def api_live_option_quote():
+    symbol=str(request.args.get("symbol") or "").upper().strip()
+    if not re.fullmatch(r"[A-Z0-9.]{10,30}",symbol):
+        return jsonify({"ok":False,"error":"Invalid option symbol"}),400
+    quote=live_option_quote(symbol)
+    if quote is None:
+        return jsonify({"ok":False,"error":"Option quote unavailable","symbol":symbol}),502
+    response=jsonify({"ok":True,**quote})
+    response.headers["Cache-Control"]="no-store, no-cache, must-revalidate, max-age=0"
     return response
 
 
@@ -563,6 +672,7 @@ def health():
             "commit": os.getenv("VERCEL_GIT_COMMIT_SHA"),
             "data_branch": "market-data",
             "live_quote_ttl_seconds": _LIVE_QUOTE_TTL_SECONDS,
+            "live_option_ttl_seconds": _LIVE_OPTION_TTL_SECONDS,
             "research_data_ttl_seconds": _RESEARCH_DATA_TTL_SECONDS,
             "live_provider":"multi-provider-router",
             "tradier_configured":bool(os.getenv("TRADIER_ACCESS_TOKEN")),
