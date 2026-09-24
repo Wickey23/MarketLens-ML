@@ -98,7 +98,7 @@ body{background:radial-gradient(circle at 50% -20%,#10203a 0,transparent 38%),va
 </section>
 <section class="box table"><div class="label">UNDERLYING HISTORICAL DISTRIBUTION</div><div class="sub" id="optstatus">—</div>
 <table><thead><tr><th>Horizon</th><th>Positive rate</th><th>Median</th><th>10th pct</th><th>25th pct</th><th>75th pct</th><th>90th pct</th><th>1σ move</th></tr></thead><tbody id="optionsRows"></tbody></table></section>
-<section class="box" style="margin-top:12px"><div class="label">MARKET-WIDE STRONGEST CANDIDATES</div><div class="sub">Ranks the best-overall contract from every deeply analyzed ticker in the current universe. A blank list means the system found no contract strong enough to elevate.</div><div id="marketWideOptions" style="margin-top:10px"></div></section><section class="box returnOutlook"><div class="label">RETURN OUTLOOK · HISTORICAL REPLAY</div><div class="sub">Three research lenses for comparing option upside and risk. These are hypothetical historical replays using today's contract economics, not guaranteed future returns.</div><div class="outlookGrid" id="returnOutlook"><div class="empty">Waiting for Opportunity Radar data…</div></div></section><section class="box" id="bestOptionBox"><div class="label">FACT-BASED CONTRACT HIGHLIGHT</div><div class="sub">Loading contract screen…</div></section>
+<section class="box" style="margin-top:12px"><div class="label">MARKET-WIDE STRONGEST CANDIDATES</div><div class="sub">Compares qualifying contracts across the deeply analyzed universe. Separate lenses prevent highest upside from being confused with highest historical profit frequency or strongest overall evidence.</div><div class="outlookGrid" id="marketWideLeaders" style="margin-top:10px"></div><div id="marketWideOptions" style="margin-top:12px"></div></section><section class="box returnOutlook"><div class="label">RETURN OUTLOOK · HISTORICAL REPLAY</div><div class="sub">Three research lenses for comparing option upside and risk. These are hypothetical historical replays using today's contract economics, not guaranteed future returns.</div><div class="outlookGrid" id="returnOutlook"><div class="empty">Waiting for Opportunity Radar data…</div></div></section><section class="box" id="bestOptionBox"><div class="label">FACT-BASED CONTRACT HIGHLIGHT</div><div class="sub">Loading contract screen…</div></section>
 <section class="box table">
 <div class="controls"><div><div class="label">OPTION CHAIN</div><div class="sub" id="chainNote">—</div></div>
 <select id="typeFilter" class="select" onchange="renderChain()"><option value="all">Calls + puts</option><option value="call">Calls</option><option value="put">Puts</option></select>
@@ -569,22 +569,46 @@ function openMarketCandidate(ticker,sym,paper=false){
   }
 }
 function renderMarketWideOptions(){
-  const el=document.getElementById('marketWideOptions');if(!el||!P)return;
-  let rows=[];
+  const el=document.getElementById('marketWideOptions'),leaders=document.getElementById('marketWideLeaders');if(!el||!P)return;
+  let overall=[],upside=[],probability=[];
   (P.tickers||[]).forEach(t=>{
     const g=(((t.options||{}).opportunity_radar||{}).guidance)||{};
-    if(g.state==='strong_candidates'&&g.best_overall)rows.push(Object.assign({ticker:t.ticker},g.best_overall));
+    if(g.state!=='strong_candidates')return;
+    if(g.best_overall)overall.push(Object.assign({ticker:t.ticker},g.best_overall));
+    if(g.highest_upside)upside.push(Object.assign({ticker:t.ticker},g.highest_upside));
+    if(g.higher_probability)probability.push(Object.assign({ticker:t.ticker},g.higher_probability));
   });
-  rows.sort((a,b)=>(b.combined_evidence_score||b.score||0)-(a.combined_evidence_score||a.score||0));
-  if(!rows.length){
-    el.innerHTML='<div class="empty"><b>NO STRONG MARKET-WIDE CONTRACT RIGHT NOW</b><div class="sub">The scanner is active, but none of the currently analyzed contracts clears the combined evidence gates.</div></div>';
-    return;
+  overall.sort((a,b)=>(b.combined_evidence_score||b.score||0)-(a.combined_evidence_score||a.score||0));
+  upside.sort((a,b)=>(b.expected_return_on_debit||-1e9)-(a.expected_return_on_debit||-1e9));
+  probability.sort((a,b)=>(((b.prob_profit_ci95||[])[0]||0)-((a.prob_profit_ci95||[])[0]||0))||((b.prob_profit||0)-(a.prob_profit||0)));
+  const leaderRows=[
+    ['Strongest overall',overall[0],'Highest combined all-data evidence across the current deeply analyzed universe.'],
+    ['Highest historical upside',upside[0],'Highest historical mean return on debit among contracts that already cleared the quality gates.'],
+    ['Highest historical profit frequency',probability[0],'Highest uncertainty-adjusted historical profit frequency among qualifying contracts.']
+  ].filter(x=>x[1]);
+  if(leaders){
+    leaders.innerHTML=leaderRows.length?leaderRows.map(([lens,x,why])=>{
+      const ci=x.prob_profit_ci95||[null,null],live=x.execution_status==='verified_live',conflict=x.execution_status==='conflict';
+      return '<div class="outlookCard"><span class="lensTag">'+esc(lens)+'</span><h3>'+esc(x.ticker)+' '+esc(x.expiration)+' '+money(x.strike)+' '+esc(String(x.type||'').toUpperCase())+'</h3>'+
+        '<div class="outlookMetric">'+(lens==='Strongest overall'?num(x.combined_evidence_score!=null?x.combined_evidence_score:x.score,1)+'/100':lens==='Highest historical upside'?pc(x.expected_return_on_debit):pc(x.prob_profit))+'</div>'+
+        '<div class="sub">'+esc(why)+'</div>'+
+        '<div class="kv"><span>Historical mean return</span><b>'+pc(x.expected_return_on_debit)+'</b></div>'+
+        '<div class="kv"><span>Profit frequency</span><b>'+pc(x.prob_profit)+'</b></div>'+
+        '<div class="kv"><span>95% interval</span><b>'+((ci[0]==null||ci[1]==null)?'—':pc(ci[0])+'–'+pc(ci[1]))+'</b></div>'+
+        '<div class="kv"><span>Risk tier</span><b>'+esc((x.risk_tier||'—').replaceAll('_',' '))+'</b></div>'+
+        '<div class="kv"><span>Market data</span><b class="'+(live?'good':conflict?'bad':'warn')+'">'+esc(live?'Verified live':conflict?'Provider conflict':'Snapshot / verify live')+'</b></div>'+
+        '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn globalAnalyze" data-ticker="'+esc(x.ticker)+'" data-sym="'+esc(x.contract_symbol||'')+'">Analyze</button><button class="btn primary globalPaper" data-ticker="'+esc(x.ticker)+'" data-sym="'+esc(x.contract_symbol||'')+'">Paper test</button></div></div>';
+    }).join(''):'<div class="empty">No strong market-wide contract currently clears the evidence gates.</div>';
   }
-  el.innerHTML='<div class="table"><table><thead><tr><th>Rank</th><th>Ticker</th><th>Contract</th><th>Evidence</th><th>Risk</th><th>Hist. mean return</th><th>Profit frequency</th><th>95% interval</th><th>Full loss freq.</th><th>Spread</th><th>Theta/day</th><th>Live data</th><th></th></tr></thead><tbody>'+
-    rows.slice(0,10).map((x,i)=>{const ci=x.prob_profit_ci95||[null,null];return '<tr><td>#'+(i+1)+'</td><td><b>'+esc(x.ticker)+'</b></td><td>'+esc(x.expiration)+' '+money(x.strike)+' '+esc(String(x.type||'').toUpperCase())+'</td><td>'+num(x.combined_evidence_score!=null?x.combined_evidence_score:x.score,1)+'/100</td><td>'+esc((x.risk_tier||'—').replaceAll('_',' '))+' · '+esc(x.evidence_confidence||'—')+'</td><td>'+pc(x.expected_return_on_debit)+'</td><td>'+pc(x.prob_profit)+'</td><td>'+((ci[0]==null||ci[1]==null)?'—':pc(ci[0])+'–'+pc(ci[1]))+'</td><td>'+pc(x.prob_total_premium_loss)+'</td><td>'+pc(x.spread_pct)+'</td><td>'+pc(x.theta_cost_pct_per_day)+'</td><td><button class="btn globalAnalyze" data-ticker="'+esc(x.ticker)+'" data-sym="'+esc(x.contract_symbol||'')+'">Analyze</button> <button class="btn primary globalPaper" data-ticker="'+esc(x.ticker)+'" data-sym="'+esc(x.contract_symbol||'')+'">Paper test</button></td></tr>'}).join('')+
-    '</tbody></table></div>';
-  el.querySelectorAll('.globalAnalyze').forEach(btn=>btn.onclick=()=>openMarketCandidate(btn.dataset.ticker,btn.dataset.sym,false));
-  el.querySelectorAll('.globalPaper').forEach(btn=>btn.onclick=()=>openMarketCandidate(btn.dataset.ticker,btn.dataset.sym,true));
+  if(!overall.length){
+    el.innerHTML='<div class="empty"><b>NO STRONG MARKET-WIDE CONTRACT RIGHT NOW</b><div class="sub">The scanner is active, but none of the currently analyzed contracts clears the combined evidence gates.</div></div>';
+  }else{
+    el.innerHTML='<div class="table"><table><thead><tr><th>Rank</th><th>Ticker</th><th>Contract</th><th>Evidence</th><th>Risk</th><th>Hist. mean return</th><th>Profit frequency</th><th>95% interval</th><th>Full loss freq.</th><th>Spread</th><th>Theta/day</th><th>Live data</th><th></th></tr></thead><tbody>'+
+      overall.slice(0,10).map((x,i)=>{const ci=x.prob_profit_ci95||[null,null];return '<tr><td>#'+(i+1)+'</td><td><b>'+esc(x.ticker)+'</b></td><td>'+esc(x.expiration)+' '+money(x.strike)+' '+esc(String(x.type||'').toUpperCase())+'</td><td>'+num(x.combined_evidence_score!=null?x.combined_evidence_score:x.score,1)+'/100</td><td>'+esc((x.risk_tier||'—').replaceAll('_',' '))+' · '+esc(x.evidence_confidence||'—')+'</td><td>'+pc(x.expected_return_on_debit)+'</td><td>'+pc(x.prob_profit)+'</td><td>'+((ci[0]==null||ci[1]==null)?'—':pc(ci[0])+'–'+pc(ci[1]))+'</td><td>'+pc(x.prob_total_premium_loss)+'</td><td>'+pc(x.spread_pct)+'</td><td>'+pc(x.theta_cost_pct_per_day)+'</td><td><span class="'+(x.execution_status==='verified_live'?'good':x.execution_status==='conflict'?'bad':'warn')+'">'+esc(x.execution_status==='verified_live'?'Verified':x.execution_status==='conflict'?'Conflict':'Snapshot')+'</span></td><td><button class="btn globalAnalyze" data-ticker="'+esc(x.ticker)+'" data-sym="'+esc(x.contract_symbol||'')+'">Analyze</button> <button class="btn primary globalPaper" data-ticker="'+esc(x.ticker)+'" data-sym="'+esc(x.contract_symbol||'')+'">Paper test</button></td></tr>'}).join('')+
+      '</tbody></table></div>';
+  }
+  document.querySelectorAll('.globalAnalyze').forEach(btn=>btn.onclick=()=>openMarketCandidate(btn.dataset.ticker,btn.dataset.sym,false));
+  document.querySelectorAll('.globalPaper').forEach(btn=>btn.onclick=()=>openMarketCandidate(btn.dataset.ticker,btn.dataset.sym,true));
 }
 function renderOptions(){
   const o=C.options||{},sum=o.summary||{},ctx=C.company_context||{},er=ctx.earnings||{};
