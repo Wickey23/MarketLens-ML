@@ -34,6 +34,11 @@ def _historical_outcomes(contract, spot, entry, returns, overlap_horizon=1):
     n=int(len(pnl))
     wins=int(np.sum(pnl>0))
     prob=wins/n
+    ordered_ret=np.sort(ret)
+    trim=max(0,int(math.floor(n*.10)))
+    trimmed_ret=ordered_ret[trim:n-trim] if trim>0 and n>2*trim else ordered_ret
+    p10_pnl=float(np.quantile(pnl,.10))
+    worst_tail=pnl[pnl<=p10_pnl]
     # h-day forward returns overlap when sampled daily. Use a conservative
     # overlap-adjusted effective count for uncertainty and qualification gates.
     effective_n=max(1,int(n/max(1,int(overlap_horizon))))
@@ -45,12 +50,17 @@ def _historical_outcomes(contract, spot, entry, returns, overlap_horizon=1):
         "prob_total_premium_loss":_f(np.mean(intrinsic<=0)),
         "expected_pnl_per_contract":_f(np.mean(pnl)),
         "median_pnl_per_contract":_f(np.median(pnl)),
-        "p10_pnl_per_contract":_f(np.quantile(pnl,.10)),
+        "p10_pnl_per_contract":_f(p10_pnl),
+        "expected_shortfall_10_pnl":_f(np.mean(worst_tail)) if len(worst_tail) else None,
         "p25_pnl_per_contract":_f(np.quantile(pnl,.25)),
         "p75_pnl_per_contract":_f(np.quantile(pnl,.75)),
         "p90_pnl_per_contract":_f(np.quantile(pnl,.90)),
         "expected_return_on_debit":_f(np.mean(ret)),
+        "trimmed_mean_return_on_debit":_f(np.mean(trimmed_ret)) if len(trimmed_ret) else None,
         "median_return_on_debit":_f(np.median(ret)),
+        "prob_return_ge_50pct":_f(np.mean(ret>=.50)),
+        "prob_return_ge_100pct":_f(np.mean(ret>=1.0)),
+        "prob_loss_ge_50pct":_f(np.mean(ret<=-.50)),
     }
 
 def _guidance_payload(rows, evidence, current_regime=None, context=None, relative_strength=None, model_probability=None):
@@ -95,7 +105,9 @@ def _guidance_payload(rows, evidence, current_regime=None, context=None, relativ
         p=float(q.get("prob_profit") or 0)
         ci=q.get("prob_profit_ci95") or [None,None]
         ci_floor=float(ci[0]) if ci and ci[0] is not None else 0.0
-        ev=float(q.get("expected_return_on_debit") or 0)
+        raw_ev=float(q.get("expected_return_on_debit") or 0)
+        robust_ev=q.get("trimmed_mean_return_on_debit")
+        ev=float(robust_ev) if robust_ev is not None else raw_ev
         loss=float(q.get("prob_total_premium_loss") or 0)
         rr=reward_downside(q)
         combined=float(q.get("score") or 0)
@@ -203,7 +215,12 @@ def _guidance_payload(rows, evidence, current_regime=None, context=None, relativ
             "historical_raw_samples":q.get("samples"),
             "historical_overlap_adjusted_samples":q.get("effective_samples"),
             "historical_mean_return_on_debit":_f(q.get("expected_return_on_debit")),
+            "historical_trimmed_mean_return_on_debit":_f(q.get("trimmed_mean_return_on_debit")),
             "historical_median_return_on_debit":_f(q.get("median_return_on_debit")),
+            "historical_prob_return_ge_50pct":_f(q.get("prob_return_ge_50pct")),
+            "historical_prob_return_ge_100pct":_f(q.get("prob_return_ge_100pct")),
+            "historical_prob_loss_ge_50pct":_f(q.get("prob_loss_ge_50pct")),
+            "historical_expected_shortfall_10_pnl":_f(q.get("expected_shortfall_10_pnl")),
             "historical_p10_return_on_debit":_f(downside_return(q)),
             "full_premium_loss_frequency":_f(q.get("prob_total_premium_loss")),
             "reward_to_p10_downside":_f(rr),
@@ -227,7 +244,7 @@ def _guidance_payload(rows, evidence, current_regime=None, context=None, relativ
         }
         q["guidance_explanation"]=[
             f"Historical replay profit frequency {p*100:.0f}%",
-            f"Historical mean return on debit {ev*100:.0f}%",
+            f"Robust historical mean return on debit {ev*100:.0f}% (raw mean {raw_ev*100:.0f}%)",
             f"Full-premium-loss frequency {loss*100:.0f}%",
             f"Contract quality score {float(q.get('score') or 0):.1f}/100",
             ("Directional ML remains weak and receives no directional boost"
@@ -244,7 +261,7 @@ def _guidance_payload(rows, evidence, current_regime=None, context=None, relativ
         enriched.append(q)
 
     best=max(enriched,key=lambda r:(r["combined_evidence_score"],r.get("score") or 0))
-    upside=max(enriched,key=lambda r:(r.get("expected_return_on_debit") if r.get("expected_return_on_debit") is not None else -1e9,
+    upside=max(enriched,key=lambda r:(r.get("trimmed_mean_return_on_debit") if r.get("trimmed_mean_return_on_debit") is not None else (r.get("expected_return_on_debit") if r.get("expected_return_on_debit") is not None else -1e9),
                                      r.get("combined_evidence_score") or 0))
     probability=max(enriched,key=lambda r:((r.get("prob_profit_ci95") or [0])[0] or 0,
                                           r.get("prob_profit") or 0,
@@ -412,7 +429,7 @@ def build_market_guidance(tickers,limit=10):
 
     overall.sort(key=lambda r:(float(r.get("combined_evidence_score") or r.get("score") or 0),
                                float(r.get("expected_return_on_debit") or -1e9)),reverse=True)
-    upside.sort(key=lambda r:(float(r.get("expected_return_on_debit") or -1e9),
+    upside.sort(key=lambda r:(float(r.get("trimmed_mean_return_on_debit") if r.get("trimmed_mean_return_on_debit") is not None else (r.get("expected_return_on_debit") or -1e9)),
                               float(r.get("combined_evidence_score") or r.get("score") or 0)),reverse=True)
     probability.sort(key=lambda r:(
         float(((r.get("prob_profit_ci95") or [0,None])[0]) or 0),
