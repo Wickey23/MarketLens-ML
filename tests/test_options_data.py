@@ -128,6 +128,8 @@ def test_alpaca_opra_snapshot_is_execution_grade(monkeypatch):
 
 
 def test_multi_provider_merge_keeps_authoritative_quote(monkeypatch):
+    from datetime import datetime, timezone
+    now=datetime.now(timezone.utc).isoformat()
     monkeypatch.setattr(od,"_risk_free_rate",lambda:(0.04,"test"))
     base={
         "contract_symbol":"ABC261002C00100000","type":"call","expiration":"2026-10-02",
@@ -138,15 +140,15 @@ def test_multi_provider_merge_keeps_authoritative_quote(monkeypatch):
     tradier={
         "source":"Tradier Brokerage API","provider_key":"tradier","feed":"consolidated",
         "underlying_price":100.0,
-        "underlying_quote":{"price":100.0,"provider":"Tradier","provider_key":"tradier","feed":"consolidated","realtime":True,"consolidated":True,"market_timestamp":"2026-09-24T19:30:00Z"},
-        "contracts":[{**base,"provider":"Tradier","provider_key":"tradier","feed":"consolidated","realtime":True,"consolidated":True,"bid":4.9,"ask":5.1,"mid":5.0,"quote_time":"2026-09-24T19:29:55Z"}],
+        "underlying_quote":{"price":100.0,"provider":"Tradier","provider_key":"tradier","feed":"consolidated","realtime":True,"consolidated":True,"market_timestamp":now},
+        "contracts":[{**base,"provider":"Tradier","provider_key":"tradier","feed":"consolidated","realtime":True,"consolidated":True,"bid":4.9,"ask":5.1,"mid":5.0,"quote_time":now}],
         "contracts_scanned":1,
     }
     indicative={
         "source":"Alpaca indicative options","provider_key":"alpaca_indicative","feed":"indicative",
         "underlying_price":100.01,
-        "underlying_quote":{"price":100.01,"provider":"Alpaca","provider_key":"alpaca_iex","feed":"iex","realtime":True,"consolidated":False,"market_timestamp":"2026-09-24T19:30:01Z"},
-        "contracts":[{**base,"provider":"Alpaca indicative","provider_key":"alpaca_indicative","feed":"indicative","realtime":True,"consolidated":False,"bid":4.95,"ask":5.05,"mid":5.0,"quote_time":"2026-09-24T19:30:01Z"}],
+        "underlying_quote":{"price":100.01,"provider":"Alpaca","provider_key":"alpaca_iex","feed":"iex","realtime":True,"consolidated":False,"market_timestamp":now},
+        "contracts":[{**base,"provider":"Alpaca indicative","provider_key":"alpaca_indicative","feed":"indicative","realtime":True,"consolidated":False,"bid":4.95,"ask":5.05,"mid":5.0,"quote_time":now}],
         "contracts_scanned":1,
     }
     out=od._merge_option_snapshots("ABC",[tradier,indicative],0.20)
