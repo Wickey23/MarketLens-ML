@@ -114,16 +114,19 @@ def test_market_stream_session_requires_token(monkeypatch):
 
 
 def test_market_stream_session_returns_browser_safe_session(monkeypatch):
-    monkeypatch.delenv("MARKETLENS_CONTROL_KEY",raising=False)
+    monkeypatch.setenv("MARKETLENS_CONTROL_KEY","control-secret")
     monkeypatch.setenv("TRADIER_ACCESS_TOKEN","secret")
     monkeypatch.setattr(market_app,"_create_tradier_market_session",lambda:"session-123")
     client=market_app.app.test_client()
-    r=client.post("/api/market-stream/session")
+    r=client.post("/api/market-stream/session",headers={"X-MarketLens-Key":"control-secret"})
     assert r.status_code==200
     j=r.get_json()
     assert j["ok"] is True
     assert j["sessionid"]=="session-123"
-    assert "TRADIER_ACCESS_TOKEN" not in r.get_data(as_text=True)
+    body=r.get_data(as_text=True)
+    assert "TRADIER_ACCESS_TOKEN" not in body
+    assert "secret" not in body
+    assert "control-secret" not in body
 
 
 def test_live_quote_prefers_tradier_when_configured(monkeypatch):
@@ -154,18 +157,13 @@ def test_control_key_protects_stream_session(monkeypatch):
     assert allowed.get_json()["sessionid"]=="session-123"
 
 
-def test_control_key_protects_research_trigger_before_github_token(monkeypatch):
+def test_research_trigger_checks_server_capability_before_control_auth(monkeypatch):
     monkeypatch.setenv("MARKETLENS_CONTROL_KEY","control-secret")
     monkeypatch.delenv("GITHUB_ACTIONS_TOKEN",raising=False)
     client=market_app.app.test_client()
-    denied=client.post("/api/run-research",json={"ticker":"SPY"})
-    assert denied.status_code==401
-    allowed=client.post(
-        "/api/run-research",
-        json={"ticker":"SPY"},
-        headers={"X-MarketLens-Key":"control-secret"},
-    )
-    assert allowed.status_code==503
+    r=client.post("/api/run-research",json={"ticker":"SPY"})
+    assert r.status_code==503
+    assert r.get_json()["error"]=="Server trigger is not configured"
 
 
 def test_home_has_baseline_security_headers():
