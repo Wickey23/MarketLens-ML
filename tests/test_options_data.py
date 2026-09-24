@@ -1,6 +1,6 @@
 import math
 import src.options_data as od
-from src.options_data import _i, enrich_contract
+from src.options_data import _i, enrich_contract, tradier_market_clock
 
 
 def test_safe_integer_parsing_handles_nan_and_missing_values():
@@ -64,3 +64,23 @@ def test_tradier_option_snapshot_uses_realtime_chain(monkeypatch):
     assert q["delta"]==0.55
     assert q["theta_per_contract_per_day"]==-5.0
     assert q["greeks_source"]=="Tradier / ORATS (hourly)"
+
+
+def test_tradier_market_clock_open(monkeypatch):
+    monkeypatch.setenv("TRADIER_ACCESS_TOKEN","test-token")
+    monkeypatch.setattr(od,"_tradier_get",lambda path,params:{
+        "clock":{
+            "date":"2026-09-24","description":"Market is open",
+            "state":"open","timestamp":1790250000,
+            "next_change":"16:00","next_state":"postmarket"
+        }
+    })
+    out=tradier_market_clock()
+    assert out["state"]=="open"
+    assert out["source"]=="Tradier"
+
+
+def test_tradier_market_clock_unconfigured(monkeypatch):
+    monkeypatch.delenv("TRADIER_ACCESS_TOKEN",raising=False)
+    out=tradier_market_clock()
+    assert out["state"]=="unconfigured"
