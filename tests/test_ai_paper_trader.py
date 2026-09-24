@@ -6,6 +6,8 @@ from src.ai_paper_trader import (
     paper_to_real_readiness,
     strategy_performance_summary,
     forward_validation_summary,
+    load_state,
+    save_state,
 )
 
 TEST_NOW=datetime(2026,9,24,15,0,tzinfo=timezone.utc)
@@ -254,3 +256,22 @@ def test_ai_respects_tradier_closed_market_clock():
     assert out["open"]==[]
     assert out["paper_market_session_open"] is False
     assert out["market_clock_state"]=="closed"
+
+
+def test_state_persistence_is_atomic_and_round_trips(tmp_path):
+    path=tmp_path/"state.json"
+    state={"starting_cash":10000.0,"cash":9990.0,"open":[],"closed":[],"equity_history":[],"decisions":[]}
+    save_state(state,path)
+    assert load_state(path)==state
+    assert not (tmp_path/"state.json.tmp").exists()
+
+
+def test_corrupt_existing_state_refuses_silent_reset(tmp_path):
+    path=tmp_path/"state.json"
+    path.write_text("{not-json",encoding="utf-8")
+    try:
+        load_state(path)
+    except RuntimeError as exc:
+        assert "refusing to reset history" in str(exc)
+    else:
+        raise AssertionError("Corrupt existing state must not silently reset")
