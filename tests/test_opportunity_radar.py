@@ -16,6 +16,7 @@ def test_radar_surfaces_and_reports_risk():
     row=(r["opportunities"] or r["watchlist"])[0]
     assert 0<=row["score"]<=100
     assert row["samples"]>=100
+    assert row["effective_samples"] < row["samples"]
     assert "prob_profit" in row
     assert "prob_total_premium_loss" in row
 
