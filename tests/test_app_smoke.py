@@ -166,3 +166,32 @@ def test_control_key_protects_research_trigger_before_github_token(monkeypatch):
         headers={"X-MarketLens-Key":"control-secret"},
     )
     assert allowed.status_code==503
+
+
+def test_home_has_baseline_security_headers():
+    client=market_app.app.test_client()
+    r=client.get("/")
+    assert r.status_code==200
+    assert r.headers["X-Content-Type-Options"]=="nosniff"
+    assert r.headers["X-Frame-Options"]=="DENY"
+    assert "wss://ws.tradier.com" in r.headers["Content-Security-Policy"]
+    assert r.headers["Permissions-Policy"]=="camera=(), microphone=(), geolocation=()"
+
+
+def test_read_data_short_cache(monkeypatch):
+    market_app._research_data_cache["at"]=None
+    market_app._research_data_cache["payload"]=None
+    calls={"n":0}
+    class FakeResponse:
+        def __enter__(self):
+            return self
+        def __exit__(self,*args):
+            return False
+        def read(self):
+            calls["n"]+=1
+            return b'{"generated_at":"2026-09-24T00:00:00Z","tickers":[]}'
+    monkeypatch.setattr(market_app.urllib.request,"urlopen",lambda *a,**k:FakeResponse())
+    a=market_app.read_data()
+    b=market_app.read_data()
+    assert calls["n"]==1
+    assert a["generated_at"]==b["generated_at"]
