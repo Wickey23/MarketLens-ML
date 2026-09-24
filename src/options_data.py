@@ -108,7 +108,8 @@ def _tradier_rows_for_expiration(ticker, expiration, spot, market_today, now, st
             continue
         bid=_f(row.get("bid")); ask=_f(row.get("ask")); last=_f(row.get("last"))
         mid=(bid+ask)/2 if bid is not None and ask is not None and ask>=bid and (bid>0 or ask>0) else last
-        breakeven=(strike+mid if side=="call" else strike-mid) if mid is not None else None
+        entry_quote=ask if ask is not None and ask>0 else mid
+        breakeven=(strike+entry_quote if side=="call" else strike-entry_quote) if entry_quote is not None else None
         spread=(ask-bid) if bid is not None and ask is not None else None
         spread_pct=(spread/mid) if spread is not None and mid and mid>0 else None
         quote_ms=max(_i(row.get("bid_date"),0),_i(row.get("ask_date"),0))
@@ -348,8 +349,9 @@ def option_snapshot(ticker:str, spot:float, annual_rv:float|None=None, max_expir
                     mid=(bid+ask)/2 if bid is not None and ask is not None and ask>=bid and (bid>0 or ask>0) else last
                     strike=_f(row.get("strike"))
                     breakeven=None
-                    if strike is not None and mid is not None:
-                        breakeven=strike+mid if side=="call" else strike-mid
+                    entry_quote=ask if ask is not None and ask>0 else mid
+                    if strike is not None and entry_quote is not None:
+                        breakeven=strike+entry_quote if side=="call" else strike-entry_quote
                     spread=(ask-bid) if bid is not None and ask is not None else None
                     spread_pct=(spread/mid) if spread is not None and mid and mid>0 else None
                     last_trade=row.get("lastTradeDate")
