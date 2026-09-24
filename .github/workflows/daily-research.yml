@@ -32,6 +32,10 @@ jobs:
     env:
       MARKETLENS_TICKER: ${{ github.event.inputs.ticker }}
       TRADIER_ACCESS_TOKEN: ${{ secrets.TRADIER_ACCESS_TOKEN }}
+      ALPACA_API_KEY_ID: ${{ secrets.ALPACA_API_KEY_ID }}
+      ALPACA_API_SECRET_KEY: ${{ secrets.ALPACA_API_SECRET_KEY }}
+      ALPACA_OPTIONS_FEED: ${{ secrets.ALPACA_OPTIONS_FEED }}
+      ALPACA_STOCK_FEED: ${{ secrets.ALPACA_STOCK_FEED }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
