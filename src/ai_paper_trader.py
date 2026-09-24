@@ -12,16 +12,22 @@ CURRENT_STRATEGY_VERSION = "v3_realtime_session"
 MARKET_TZ = ZoneInfo("America/New_York")
 
 def load_state(path=STATE_PATH):
-    if path.exists():
-        try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    return {"starting_cash":STARTING_CASH,"cash":STARTING_CASH,"open":[],"closed":[],"equity_history":[],"decisions":[]}
+    if not path.exists():
+        return {"starting_cash":STARTING_CASH,"cash":STARTING_CASH,"open":[],"closed":[],"equity_history":[],"decisions":[]}
+    try:
+        state=json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise RuntimeError(f"AI paper state is unreadable at {path}; refusing to reset history") from exc
+    required={"starting_cash","cash","open","closed","equity_history","decisions"}
+    if not isinstance(state,dict) or not required.issubset(state):
+        raise RuntimeError(f"AI paper state is invalid at {path}; refusing to reset history")
+    return state
 
 def save_state(state,path=STATE_PATH):
     path.parent.mkdir(parents=True,exist_ok=True)
-    path.write_text(json.dumps(state,indent=2),encoding="utf-8")
+    tmp=path.with_suffix(path.suffix+".tmp")
+    tmp.write_text(json.dumps(state,indent=2),encoding="utf-8")
+    tmp.replace(path)
 
 def contract_key(x):
     return x.get("contract_symbol") or f'{x.get("ticker","")}:{x.get("expiration")}:{x.get("strike")}:{x.get("type")}'
