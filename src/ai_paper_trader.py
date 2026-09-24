@@ -260,8 +260,24 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
 
     open_value=sum(valuation_mark(p,tickers)*100*p["qty"] for p in state["open"])
     equity=state["cash"]+open_value
+    current_closed=eligible_strategy_trades(state,CURRENT_STRATEGY_VERSION,True)
+    current_realized=sum(float(p.get("pnl") or 0.0) for p in current_closed)
+    current_open=[
+        p for p in state["open"]
+        if p.get("strategy_version")==CURRENT_STRATEGY_VERSION
+        and p.get("entry_market_data_realtime") is True
+    ]
+    current_unrealized=sum(
+        (valuation_mark(p,tickers)-float(p.get("entry_price") or 0.0))*100*int(p.get("qty") or 1)
+        for p in current_open
+    )
+    strategy_equity=STARTING_CASH+current_realized+current_unrealized
     state["equity_history"].append({"at":now,"equity":equity,"cash":state["cash"],"open_value":open_value,
-                                    "strategy_version":CURRENT_STRATEGY_VERSION,"market_session_open":market_session_open})
+                                    "strategy_version":CURRENT_STRATEGY_VERSION,
+                                    "strategy_equity":strategy_equity,
+                                    "strategy_realized_pnl":current_realized,
+                                    "strategy_unrealized_pnl":current_unrealized,
+                                    "market_session_open":market_session_open})
     state["equity_history"]=state["equity_history"][-1000:]
     state["decisions"]=state.get("decisions",[])[-2000:]
     state["updated_at"]=now
@@ -329,13 +345,13 @@ def strategy_performance_summary(state,strategy_version=CURRENT_STRATEGY_VERSION
 
     hist=[
         x for x in (state.get("equity_history") or [])
-        if x.get("strategy_version")==strategy_version and x.get("equity") is not None
+        if x.get("strategy_version")==strategy_version and x.get("strategy_equity") is not None
     ]
     max_dd=0.0
     if hist:
-        peak=float(hist[0]["equity"])
+        peak=float(hist[0]["strategy_equity"])
         for x in hist:
-            eq=float(x["equity"])
+            eq=float(x["strategy_equity"])
             peak=max(peak,eq)
             if peak>0:
                 max_dd=min(max_dd,eq/peak-1)
