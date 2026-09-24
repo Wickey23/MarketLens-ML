@@ -279,7 +279,13 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
              "entry_spread_pct":q.get("spread_pct"),"entry_theta_cost_pct_per_day":q.get("theta_cost_pct_per_day"),
              "entry_regime":t.get("regime"),"entry_model_auc":(t.get("evidence") or {}).get("mean_roc_auc"),
              "entry_research_age_hours":timestamp_age_hours(t.get("research_refreshed_at"),now_dt),
-             "entry_prob_profit":r.get("prob_profit"),"entry_expected_pnl":r.get("expected_pnl_per_contract"),
+             "entry_prob_profit":r.get("prob_profit"),"entry_prob_profit_ci95":r.get("prob_profit_ci95"),
+             "entry_expected_pnl":r.get("expected_pnl_per_contract"),"entry_expected_return_on_debit":r.get("expected_return_on_debit"),
+             "entry_median_return_on_debit":r.get("median_return_on_debit"),
+             "entry_full_premium_loss_frequency":r.get("prob_total_premium_loss"),
+             "entry_risk_tier":r.get("risk_tier"),"entry_evidence_confidence":r.get("evidence_confidence"),
+             "entry_execution_status":r.get("execution_status"),
+             "entry_all_data_components":r.get("all_data_components") or {},
              "entry_scope":r.get("historical_scope"),"strategy_version":CURRENT_STRATEGY_VERSION,
              "entry_market_data_source":q.get("selected_quote_provider") or chain_source,
              "entry_market_data_realtime":chain_realtime,
@@ -423,15 +429,22 @@ def forward_validation_summary(state,strategy_version=CURRENT_STRATEGY_VERSION):
         actual=float(p.get("pnl") or 0.0)/qty
         prob=p.get("entry_prob_profit")
         expected=p.get("entry_expected_pnl")
+        expected_return=p.get("entry_expected_return_on_debit")
+        debit=float(p.get("entry_price") or 0.0)*100.0
+        actual_return=(actual/debit) if debit>0 else None
         rows.append({
             "actual_pnl_per_contract":actual,
+            "actual_return_on_debit":actual_return,
             "profitable":actual>0,
             "reference_profit_frequency":float(prob) if prob is not None else None,
             "reference_expected_pnl":float(expected) if expected is not None else None,
+            "reference_expected_return_on_debit":float(expected_return) if expected_return is not None else None,
         })
     probs=[x["reference_profit_frequency"] for x in rows if x["reference_profit_frequency"] is not None]
     expected=[x["reference_expected_pnl"] for x in rows if x["reference_expected_pnl"] is not None]
+    expected_returns=[x["reference_expected_return_on_debit"] for x in rows if x["reference_expected_return_on_debit"] is not None]
     actual=[x["actual_pnl_per_contract"] for x in rows]
+    actual_returns=[x["actual_return_on_debit"] for x in rows if x["actual_return_on_debit"] is not None]
     calibration=[]
     for label,lo,hi in [("<60%",0,.60),("60-65%",.60,.65),("65%+",.65,1.01)]:
         group=[x for x in rows if x["reference_profit_frequency"] is not None and lo<=x["reference_profit_frequency"]<hi]
@@ -458,8 +471,14 @@ def forward_validation_summary(state,strategy_version=CURRENT_STRATEGY_VERSION):
         "mean_actual_pnl_per_contract":sum(actual)/len(actual) if actual else None,
         "mean_reference_expected_pnl_per_contract":sum(expected)/len(expected) if expected else None,
         "mean_expected_pnl_error_per_contract":sum(paired)/len(paired) if paired else None,
+        "mean_actual_return_on_debit":sum(actual_returns)/len(actual_returns) if actual_returns else None,
+        "mean_reference_expected_return_on_debit":sum(expected_returns)/len(expected_returns) if expected_returns else None,
+        "mean_return_error":(
+            (sum(actual_returns)/len(actual_returns))-(sum(expected_returns)/len(expected_returns))
+            if actual_returns and expected_returns else None
+        ),
         "calibration_buckets":calibration,
-        "note":"Reference profit frequency and expected P/L come from the historical payoff replay captured at entry. They are diagnostics, not calibrated forecasts.",
+        "note":"Reference profit frequency and expected payoff come from evidence captured before entry. Forward realized outcomes are the primary validation record.",
     }
 
 
@@ -574,6 +593,9 @@ def performance_attribution(state,strategy_version=CURRENT_STRATEGY_VERSION):
         "by_score":_group_stats(closed,score_band),
         "by_historical_probability":_group_stats(closed,prob_band),
         "by_iv_environment":_group_stats(closed,iv_band),
+        "by_risk_tier":_group_stats(closed,lambda p:p.get("entry_risk_tier","unknown")),
+        "by_evidence_confidence":_group_stats(closed,lambda p:p.get("entry_evidence_confidence","unknown")),
+        "by_market_data_confidence":_group_stats(closed,lambda p:p.get("entry_market_data_confidence","unknown")),
         "strategy_version":strategy_version,
         "note":"Attribution uses current-strategy, real-time-source trades and facts captured at entry. Small samples should not be treated as evidence of a durable edge.",
     }
