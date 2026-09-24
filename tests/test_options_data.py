@@ -60,6 +60,7 @@ def test_tradier_option_snapshot_uses_realtime_chain(monkeypatch):
     assert q["contract_symbol"]=="ABC990116C00100000"
     assert q["bid"]==4.9
     assert q["ask"]==5.1
+    assert q["breakeven"]==105.1
     assert q["delta"]==0.55
     assert q["theta_per_contract_per_day"]==-5.0
     assert q["greeks_source"]=="Tradier / ORATS (hourly)"
