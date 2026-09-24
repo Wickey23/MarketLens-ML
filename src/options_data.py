@@ -79,8 +79,14 @@ def _tradier_underlying_quote(ticker, now):
     quote_ms=max(_i(row.get("bid_date"),0),_i(row.get("ask_date"),0),_i(row.get("trade_date"),0))
     quote_dt=datetime.fromtimestamp(quote_ms/1000,timezone.utc) if quote_ms else None
     age=max(0.0,(now-quote_dt).total_seconds()/3600.0) if quote_dt else None
+    previous_close=_f(row.get("prevclose"))
+    if previous_close is None:
+        previous_close=_f(row.get("close"))
     return {
         "price":price,"bid":bid,"ask":ask,"last":last,
+        "previous_close":previous_close,
+        "change":_f(row.get("change")),
+        "change_pct":_f(row.get("change_percentage")),
         "quote_age_hours":_f(age),
         "quote_time":quote_dt.isoformat() if quote_dt else None,
     }
