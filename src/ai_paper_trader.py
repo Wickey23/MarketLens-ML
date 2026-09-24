@@ -283,29 +283,170 @@ def performance_summary(state):
             "max_drawdown":max_dd,"open_positions":len(state.get("open") or [])}
 
 
-def paper_to_real_readiness(state, min_closed_trades=30):
-    """Forward-only readiness evidence for considering a tiny real-money review.
+def _parse_timestamp(value):
+    if not value:
+        return None
+    try:
+        dt=datetime.fromisoformat(str(value).replace("Z","+00:00"))
+        return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
 
-    This is deliberately conservative and is not an authorization to trade.
-    It summarizes whether the paper record has enough breadth and risk control
-    to justify human review.
+
+def eligible_strategy_trades(state,strategy_version=CURRENT_STRATEGY_VERSION,require_realtime=True):
+    """Closed trades eligible for current-strategy forward evidence."""
+    rows=[]
+    for p in state.get("closed") or []:
+        if p.get("strategy_version")!=strategy_version:
+            continue
+        if require_realtime and p.get("entry_market_data_realtime") is not True:
+            continue
+        rows.append(p)
+    return rows
+
+
+def strategy_performance_summary(state,strategy_version=CURRENT_STRATEGY_VERSION,require_realtime=True):
+    """Performance isolated to the current forward-test strategy generation."""
+    closed=eligible_strategy_trades(state,strategy_version,require_realtime)
+    open_rows=[
+        p for p in (state.get("open") or [])
+        if p.get("strategy_version")==strategy_version
+        and (not require_realtime or p.get("entry_market_data_realtime") is True)
+    ]
+    pnls=[float(p.get("pnl") or 0.0) for p in closed]
+    realized=sum(pnls)
+    unrealized=sum(float(p.get("unrealized_pnl") or 0.0) for p in open_rows)
+    total=realized+unrealized
+    wins=[x for x in pnls if x>0]
+    losses=[x for x in pnls if x<0]
+
+    hist=[
+        x for x in (state.get("equity_history") or [])
+        if x.get("strategy_version")==strategy_version and x.get("equity") is not None
+    ]
+    max_dd=0.0
+    if hist:
+        peak=float(hist[0]["equity"])
+        for x in hist:
+            eq=float(x["equity"])
+            peak=max(peak,eq)
+            if peak>0:
+                max_dd=min(max_dd,eq/peak-1)
+    elif closed:
+        eq=STARTING_CASH
+        peak=eq
+        for p in sorted(closed,key=lambda z:str(z.get("closed_at") or "")):
+            eq+=float(p.get("pnl") or 0.0)
+            peak=max(peak,eq)
+            if peak>0:
+                max_dd=min(max_dd,eq/peak-1)
+
+    return {
+        "strategy_version":strategy_version,
+        "realtime_evidence_only":require_realtime,
+        "equity":STARTING_CASH+total,
+        "total_pnl":total,
+        "realized_pnl":realized,
+        "unrealized_pnl":unrealized,
+        "return":total/STARTING_CASH,
+        "closed_trades":len(closed),
+        "win_rate":len(wins)/len(closed) if closed else None,
+        "avg_win":sum(wins)/len(wins) if wins else None,
+        "avg_loss":sum(losses)/len(losses) if losses else None,
+        "max_drawdown":max_dd,
+        "open_positions":len(open_rows),
+    }
+
+
+def forward_validation_summary(state,strategy_version=CURRENT_STRATEGY_VERSION):
+    """Compare forward realized outcomes with evidence captured before entry."""
+    closed=eligible_strategy_trades(state,strategy_version,True)
+    rows=[]
+    for p in closed:
+        qty=max(1,int(p.get("qty") or 1))
+        actual=float(p.get("pnl") or 0.0)/qty
+        prob=p.get("entry_prob_profit")
+        expected=p.get("entry_expected_pnl")
+        rows.append({
+            "actual_pnl_per_contract":actual,
+            "profitable":actual>0,
+            "reference_profit_frequency":float(prob) if prob is not None else None,
+            "reference_expected_pnl":float(expected) if expected is not None else None,
+        })
+    probs=[x["reference_profit_frequency"] for x in rows if x["reference_profit_frequency"] is not None]
+    expected=[x["reference_expected_pnl"] for x in rows if x["reference_expected_pnl"] is not None]
+    actual=[x["actual_pnl_per_contract"] for x in rows]
+    calibration=[]
+    for label,lo,hi in [("<60%",0,.60),("60-65%",.60,.65),("65%+",.65,1.01)]:
+        group=[x for x in rows if x["reference_profit_frequency"] is not None and lo<=x["reference_profit_frequency"]<hi]
+        if group:
+            calibration.append({
+                "group":label,
+                "trades":len(group),
+                "mean_reference_profit_frequency":sum(x["reference_profit_frequency"] for x in group)/len(group),
+                "realized_win_rate":sum(1 for x in group if x["profitable"])/len(group),
+            })
+    paired=[
+        x["actual_pnl_per_contract"]-x["reference_expected_pnl"]
+        for x in rows if x["reference_expected_pnl"] is not None
+    ]
+    return {
+        "strategy_version":strategy_version,
+        "closed_trades":len(rows),
+        "realized_win_rate":sum(1 for x in rows if x["profitable"])/len(rows) if rows else None,
+        "mean_reference_profit_frequency":sum(probs)/len(probs) if probs else None,
+        "profit_frequency_gap":(
+            (sum(1 for x in rows if x["profitable"])/len(rows))-(sum(probs)/len(probs))
+            if rows and probs else None
+        ),
+        "mean_actual_pnl_per_contract":sum(actual)/len(actual) if actual else None,
+        "mean_reference_expected_pnl_per_contract":sum(expected)/len(expected) if expected else None,
+        "mean_expected_pnl_error_per_contract":sum(paired)/len(paired) if paired else None,
+        "calibration_buckets":calibration,
+        "note":"Reference profit frequency and expected P/L come from the historical payoff replay captured at entry. They are diagnostics, not calibrated forecasts.",
+    }
+
+
+def paper_to_real_readiness(state,min_closed_trades=30,min_observation_days=21,strategy_version=CURRENT_STRATEGY_VERSION):
+    """Forward-only evidence gate for a later human review.
+
+    Only the current strategy generation and real-time-source entries count.
+    Legacy experiments and delayed-data trades remain in history but cannot
+    make the current strategy look ready.
     """
-    summary=performance_summary(state)
-    closed=state.get("closed") or []
+    closed=eligible_strategy_trades(state,strategy_version,True)
+    raw_current=[
+        p for p in (state.get("closed") or [])
+        if p.get("strategy_version")==strategy_version
+    ]
     n=len(closed)
     pnls=[float(p.get("pnl") or 0.0) for p in closed]
-    avg_pnl=(sum(pnls)/n) if n else None
+    net_pnl=sum(pnls)
+    avg_pnl=(net_pnl/n) if n else None
     winners=[x for x in pnls if x>0]
     winner_sum=sum(winners)
     largest_winner=max(winners) if winners else 0.0
     winner_concentration=(largest_winner/winner_sum) if winner_sum>0 else None
     ticker_count=len({p.get("ticker") for p in closed if p.get("ticker")})
+    summary=strategy_performance_summary(state,strategy_version,True)
+
+    opened=[_parse_timestamp(p.get("opened_at")) for p in closed]
+    ended=[_parse_timestamp(p.get("closed_at")) for p in closed]
+    opened=[x for x in opened if x is not None]
+    ended=[x for x in ended if x is not None]
+    observation_days=0.0
+    if opened and ended:
+        observation_days=max(0.0,(max(ended)-min(opened)).total_seconds()/86400.0)
 
     checks=[
         {"id":"forward_sample","label":"Forward sample","pass":n>=min_closed_trades,
          "value":n,"target":min_closed_trades},
-        {"id":"net_pnl","label":"Net paper P/L","pass":n>0 and float(summary.get("total_pnl") or 0)>0,
-         "value":summary.get("total_pnl"),"target":"> 0"},
+        {"id":"observation_span","label":"Observation span","pass":observation_days>=min_observation_days,
+         "value":round(observation_days,1),"target":f">= {min_observation_days} days"},
+        {"id":"realtime_data","label":"Real-time entry data","pass":n>0 and len(raw_current)==n,
+         "value":n,"target":"All counted trades"},
+        {"id":"net_pnl","label":"Net paper P/L","pass":n>0 and net_pnl>0,
+         "value":net_pnl,"target":"> 0"},
         {"id":"avg_trade","label":"Average trade","pass":n>0 and avg_pnl is not None and avg_pnl>0,
          "value":avg_pnl,"target":"> 0"},
         {"id":"max_drawdown","label":"Max drawdown","pass":n>0 and abs(float(summary.get("max_drawdown") or 0))<=.15,
@@ -315,7 +456,7 @@ def paper_to_real_readiness(state, min_closed_trades=30):
         {"id":"ticker_breadth","label":"Ticker breadth","pass":n>=15 and ticker_count>=3,
          "value":ticker_count,"target":">= 3 tickers"},
     ]
-    enough_sample=n>=min_closed_trades
+    enough_sample=n>=min_closed_trades and observation_days>=min_observation_days
     all_pass=all(bool(x["pass"]) for x in checks)
     if not enough_sample:
         state_name="collecting_forward_data"
@@ -325,13 +466,15 @@ def paper_to_real_readiness(state, min_closed_trades=30):
         state_name="paper_results_not_ready"
     return {
         "state":state_name,
+        "strategy_version":strategy_version,
         "closed_trades":n,
         "minimum_closed_trades":min_closed_trades,
+        "observation_days":round(observation_days,1),
+        "minimum_observation_days":min_observation_days,
         "all_checks_pass":all_pass,
         "checks":checks,
-        "note":"This readiness result is forward-paper evidence only. It does not guarantee future profitability or automatically authorize real-money trading.",
+        "note":"Only forward paper trades from the current strategy using real-time entry data count. Passing these checks does not guarantee future profitability or authorize real-money trading.",
     }
-
 
 def _group_stats(closed,key_fn):
     groups=defaultdict(list)
@@ -347,9 +490,9 @@ def _group_stats(closed,key_fn):
                     "return_on_premium":sum(pnl)/cost if cost else None})
     return sorted(out,key=lambda x:(x["trades"],x["total_pnl"]),reverse=True)
 
-def performance_attribution(state):
-    """Describe where forward paper results came from; never backfills entry facts."""
-    closed=state.get("closed") or []
+def performance_attribution(state,strategy_version=CURRENT_STRATEGY_VERSION):
+    """Describe current-strategy forward results without backfilling entry facts."""
+    closed=eligible_strategy_trades(state,strategy_version,True)
     def score_band(p):
         s=float(p.get("entry_score") or 0)
         return "80+" if s>=80 else ("75-79" if s>=75 else ("72-74" if s>=72 else "<72"))
@@ -375,19 +518,21 @@ def performance_attribution(state):
         "by_score":_group_stats(closed,score_band),
         "by_historical_probability":_group_stats(closed,prob_band),
         "by_iv_environment":_group_stats(closed,iv_band),
-        "note":"Attribution uses facts captured at entry. Small samples should not be treated as evidence of a durable edge.",
+        "strategy_version":strategy_version,
+        "note":"Attribution uses current-strategy, real-time-source trades and facts captured at entry. Small samples should not be treated as evidence of a durable edge.",
     }
 
 
-def learning_profile(state,min_trades=20,min_group_trades=8):
+def learning_profile(state,min_trades=20,min_group_trades=8,strategy_version=CURRENT_STRATEGY_VERSION):
     """Conservative forward-only learning profile.
 
     It does not rewrite historical scores and it does not optimize thresholds.
     A factor is only marked positive/negative after enough closed paper trades.
     """
-    attr=performance_attribution(state)
-    total=len(state.get("closed") or [])
+    attr=performance_attribution(state,strategy_version)
+    total=len(eligible_strategy_trades(state,strategy_version,True))
     profile={"enabled":total>=min_trades,"closed_trades":total,"minimum_closed_trades":min_trades,
+             "strategy_version":strategy_version,"realtime_evidence_only":True,
              "minimum_group_trades":min_group_trades,"factors":{}}
     mapping={"type":"by_type","regime":"by_regime","dte":"by_dte","score":"by_score",
              "historical_probability":"by_historical_probability","iv_environment":"by_iv_environment"}
@@ -406,5 +551,5 @@ def learning_profile(state,min_trades=20,min_group_trades=8):
             rows.append({"group":g.get("group"),"trades":n,"win_rate":wr,"return_on_premium":rp,
                          "status":status,"weight_multiplier":weight})
         profile["factors"][factor]=rows
-    profile["note"]="Learning remains disabled until the minimum forward sample is reached. Eligible adjustments are capped at ±10% and never rewrite prior decisions."
+    profile["note"]="Learning uses only current-strategy trades entered from real-time data. It remains disabled until the minimum forward sample is reached; eligible adjustments are capped at ±10% and never rewrite prior decisions."
     return profile
