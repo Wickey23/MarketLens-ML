@@ -146,6 +146,7 @@ body{background:radial-gradient(circle at 50% -20%,#10203a 0,transparent 38%),va
 <section id="aiView" class="view"><div class="workspaceHead"><div><h2>AI Portfolio</h2><p class="sub">Forward-test MarketLens decisions separately from your manual trades.</p></div></div><div class="hint"><b>Autonomous paper testing.</b> This account is separate from your Simulator. It records qualifying setups and why the system acted or stayed in cash. It does not place real brokerage orders.</div>
 <section class="grid"><div class="card"><div class="label">AI PAPER EQUITY</div><div class="value" id="aiEquity">—</div><div class="sub">Started with $10,000 simulated capital</div></div><div class="card"><div class="label">TOTAL P/L</div><div class="value" id="aiPnl">—</div></div><div class="card"><div class="label">WIN RATE</div><div class="value" id="aiWin">—</div><div class="sub" id="aiTrades">—</div></div><div class="card"><div class="label">MAX DRAWDOWN</div><div class="value" id="aiDd">—</div></div></section>
 <section class="grid2" style="margin-top:12px"><div class="box chart"><div class="label">AI PORTFOLIO EQUITY</div><canvas id="aiChart"></canvas></div><div class="box"><div class="label">OPPORTUNITY INBOX</div><div class="sub">Only setups clearing the research thresholds appear here.</div><div id="aiInbox"></div></div></section><section class="box" style="margin-top:12px"><div class="readinessGrid"><div><div class="label">PAPER-TO-REAL READINESS</div><div class="readinessState" id="readinessState">Collecting data</div><div class="sub" id="readinessNote">Forward evidence is still being accumulated.</div></div><div><div class="label">EVIDENCE CHECKS</div><div class="readinessChecks" id="readinessChecks"></div></div></div></section>
+<section class="box" style="margin-top:12px"><div class="label">FORWARD VALIDATION · CURRENT STRATEGY</div><div class="sub" id="aiValidationNote">Waiting for eligible real-time forward trades.</div><section class="grid3" style="margin-top:10px"><div class="card"><div class="label">ELIGIBLE CLOSED TRADES</div><div class="value" id="aiValTrades">0</div></div><div class="card"><div class="label">REALIZED VS REFERENCE WIN RATE</div><div class="value" id="aiValWinGap">—</div></div><div class="card"><div class="label">MEAN P/L ERROR VS REPLAY</div><div class="value" id="aiValPnlError">—</div></div></section><div id="aiValBuckets" style="margin-top:10px"></div></section>
 <section class="box table"><div class="label">OPEN AI PAPER POSITIONS</div><table><thead><tr><th>Ticker</th><th>Contract</th><th>Qty</th><th>Entry</th><th>Mark</th><th>P/L</th><th>Score</th><th>Exit signal</th><th>Why</th></tr></thead><tbody id="aiOpen"></tbody></table></section>
 <section class="box table"><div class="label">WHAT HAS ACTUALLY WORKED?</div><div class="sub">Forward paper results grouped by facts captured at entry. Small samples are not treated as an edge.</div><div id="aiAttrib"></div></section>\n<section class="box table"><div class="label">AI DECISION LOG</div><table><thead><tr><th>Time</th><th>Ticker</th><th>Contract</th><th>Decision</th><th>Qty</th><th>Price</th><th>Score</th><th>Reason</th></tr></thead><tbody id="aiDecisions"></tbody></table></section>
 <section class="box table"><div class="label">CLOSED AI PAPER TRADES</div><table><thead><tr><th>Ticker</th><th>Contract</th><th>Entry</th><th>Exit</th><th>P/L</th><th>Exit reason</th><th>Opened</th><th>Closed</th></tr></thead><tbody id="aiClosed"></tbody></table></section></section>
@@ -221,6 +222,16 @@ function applyMarketStreamEvent(e){
     if(Number.isFinite(x.bid)&&Number.isFinite(x.ask)&&x.ask>=x.bid){
       x.mid=(x.bid+x.ask)/2;
       x.spread_pct=x.mid>0?(x.ask-x.bid)/x.mid:null;
+      const entry=x.ask>0?x.ask:x.mid,spot=spotNow();
+      if(entry>0){
+        x.entry_debit_per_contract=entry*100;
+        x.max_loss_per_contract=entry*100;
+        if(x.strike!=null){
+          x.breakeven=x.type==='call'?Number(x.strike)+entry:Number(x.strike)-entry;
+          x.breakeven_move=(spot&&spot>0)?x.breakeven/spot-1:null;
+        }
+        if(x.theta_per_contract_per_day!=null)x.theta_cost_pct_per_day=Math.abs(Number(x.theta_per_contract_per_day))/(entry*100);
+      }
     }
     x.quote_age_hours=0;
     x.live_quote=true;
@@ -436,7 +447,7 @@ function renderReturnOutlook(){
   const picks=[
     ['Best overall',g.best_overall,'Highest combined evidence after execution quality, historical payoff, uncertainty, downside and validated model evidence are considered.'],
     ['Higher upside',g.highest_upside,'Highest historical mean return on debit among contracts that already cleared the quality gates.'],
-    ['Higher probability / lower risk',g.higher_probability,'Highest uncertainty-adjusted historical profit frequency among contracts that cleared the quality gates.']
+    ['Higher historical profit frequency',g.higher_probability,'Highest uncertainty-adjusted historical profit frequency among contracts that cleared the quality gates.']
   ].filter(x=>x[1]);
   el.innerHTML=picks.map(([lens,x,why])=>{
     const ci=x.prob_profit_ci95||[null,null];
@@ -448,7 +459,7 @@ function renderReturnOutlook(){
       '<span class="lensTag">'+esc(lens)+'</span><h3>'+esc(C.ticker)+' '+esc(x.expiration)+' '+money(x.strike)+' '+esc(String(x.type||'').toUpperCase())+'</h3>'+
       '<div class="outlookMetric">'+pc(x.expected_return_on_debit)+'</div><div class="sub">Historical mean return on debit · not a forecast</div>'+
       '<div class="kv"><span>Combined evidence</span><b>'+num(score,1)+'/100</b></div>'+
-      '<div class="kv"><span>Current ask / debit</span><b>'+money(x.ask!=null?x.ask:x.entry_quote)+' / '+money(Number(x.ask!=null?x.ask:x.entry_quote||0)*100)+'</b></div>'+
+      '<div class="kv"><span>Snapshot ask / debit</span><b>'+money(x.ask!=null?x.ask:x.entry_quote)+' / '+money(Number(x.ask!=null?x.ask:x.entry_quote||0)*100)+'</b></div>'+
       '<div class="kv"><span>Profit frequency</span><b>'+pc(x.prob_profit)+'</b></div>'+
       '<div class="kv"><span>95% interval</span><b>'+ciText+'</b></div>'+
       '<div class="kv"><span>Median P/L</span><b>'+money(x.median_pnl_per_contract)+'</b></div>'+
@@ -664,42 +675,55 @@ function replay(){
  if(!C||!replayDate.value)return;const h=C.history||[],i=h.findIndex(x=>x.date===replayDate.value),n=Number(replayH.value);if(i<0||i+n>=h.length){replayResult.textContent='Not enough subsequent data';replayText.textContent='Choose an earlier date.';return}
  const a=h[i].close,b=h[i+n].close,r=b/a-1;replayResult.textContent=C.ticker+' '+(r>=0?'+':'')+pc(r)+' over '+n+' trading days';replayResult.className='value '+(r>=0?'good':'bad');replayText.textContent='Underlying moved from '+money(a)+' to '+money(b)+'. This does not reconstruct historical option prices.';
 }
-function renderReadiness(a,s){
-  const closed=a.closed||[],n=closed.length,total=Number(s.total_pnl||0),dd=Math.abs(Number(s.max_drawdown||0));
-  const pnls=closed.map(x=>Number(x.pnl||0)),avg=n?pnls.reduce((u,v)=>u+v,0)/n:null;
-  const winners=pnls.filter(x=>x>0),winnerSum=winners.reduce((u,v)=>u+v,0),largestWinner=winners.length?Math.max(...winners):0;
-  const concentration=winnerSum>0?largestWinner/winnerSum:null;
-  const tickers=new Set(closed.map(x=>x.ticker).filter(Boolean)).size;
-  const checks=[
-    ['Forward sample',n>=30,n+'/30 minimum closed trades'],
-    ['Net paper P/L',n>0&&total>0,(total>=0?'+':'')+money(total)],
-    ['Average trade',n>0&&avg>0,avg==null?'—':money(avg)],
-    ['Max drawdown',n>0&&dd<=.15,n?pc(-dd):'—'],
-    ['Winner concentration',n>=10&&concentration!=null&&concentration<=.50,concentration==null?'—':pc(concentration)+' from largest winner'],
-    ['Ticker breadth',n>=15&&tickers>=3,tickers+' ticker'+(tickers===1?'':'s')]
-  ];
-  readinessChecks.innerHTML=checks.map(([name,ok,detail])=>'<div class="readyCheck"><div class="label">'+esc(name)+'</div><b class="'+(ok?'good':'warn')+'">'+(ok?'PASS':'WAIT')+'</b><div class="sub">'+esc(detail)+'</div></div>').join('');
-  const all=checks.every(x=>x[1]),enough=n>=30;
-  if(!enough){
-    readinessState.textContent='COLLECTING FORWARD DATA';
-    readinessState.className='readinessState warn';
-    readinessNote.textContent='MarketLens needs at least 30 closed forward paper trades before the strategy gets a readiness review. One or a few winners are not enough.';
-  }else if(all){
-    readinessState.textContent='PAPER RESULTS READY FOR REVIEW';
-    readinessState.className='readinessState good';
-    readinessNote.textContent='The paper account clears the current evidence checks. This does not guarantee future profitability or automatically authorize real-money trading.';
-  }else{
-    readinessState.textContent='PAPER RESULTS NOT READY';
-    readinessState.className='readinessState bad';
-    readinessNote.textContent='The forward sample is large enough to review, but one or more risk/performance checks still fails.';
-  }
+function readinessDetail(x){
+  const v=x.value;
+  if(x.id==='net_pnl'||x.id==='avg_trade')return v==null?'—':money(v);
+  if(x.id==='max_drawdown'||x.id==='winner_concentration')return v==null?'—':pc(v);
+  if(x.id==='observation_span')return v==null?'—':num(v,1)+' days';
+  if(x.id==='ticker_breadth')return String(v??0)+' ticker'+(Number(v)===1?'':'s');
+  if(x.id==='realtime_data'||x.id==='forward_sample')return String(v??0);
+  return v==null?'—':String(v);
 }
+function renderReadiness(a,s){
+  const r=a.readiness||null;
+  if(r&&Array.isArray(r.checks)){
+    readinessChecks.innerHTML=r.checks.map(x=>'<div class="readyCheck"><div class="label">'+esc(x.label||x.id)+'</div><b class="'+(x.pass?'good':'warn')+'">'+(x.pass?'PASS':'WAIT')+'</b><div class="sub">'+esc(readinessDetail(x))+' · target '+esc(x.target??'—')+'</div></div>').join('');
+    const labels={
+      collecting_forward_data:'COLLECTING FORWARD DATA',
+      paper_results_ready_for_review:'PAPER RESULTS READY FOR REVIEW',
+      paper_results_not_ready:'PAPER RESULTS NOT READY'
+    };
+    readinessState.textContent=labels[r.state]||String(r.state||'Collecting data').replaceAll('_',' ').toUpperCase();
+    readinessState.className='readinessState '+(r.state==='paper_results_ready_for_review'?'good':r.state==='paper_results_not_ready'?'bad':'warn');
+    readinessNote.textContent=r.note||'Forward evidence is still being accumulated.';
+    return;
+  }
+  const n=Number(s.closed_trades||0);
+  readinessChecks.innerHTML='<div class="readyCheck"><div class="label">Forward sample</div><b class="warn">WAIT</b><div class="sub">'+n+'/30 minimum closed trades</div></div>';
+  readinessState.textContent='COLLECTING FORWARD DATA';
+  readinessState.className='readinessState warn';
+  readinessNote.textContent='Waiting for the server-side readiness audit in the next research snapshot.';
+}
+function renderForwardValidation(a){
+  const v=a.forward_validation||{};
+  aiValTrades.textContent=String(v.closed_trades||0);
+  const realized=v.realized_win_rate,reference=v.mean_reference_profit_frequency;
+  aiValWinGap.textContent=(realized==null||reference==null)?'—':pc(realized)+' vs '+pc(reference);
+  const err=v.mean_expected_pnl_error_per_contract;
+  aiValPnlError.textContent=err==null?'—':((err>=0?'+':'')+money(err));
+  aiValPnlError.className='value '+(err==null?'':err>=0?'good':'bad');
+  aiValidationNote.textContent=v.note||'Waiting for eligible real-time forward trades.';
+  const buckets=v.calibration_buckets||[];
+  aiValBuckets.innerHTML=buckets.length?'<div class="table"><table><thead><tr><th>Entry replay band</th><th>Trades</th><th>Mean replay frequency</th><th>Realized win rate</th></tr></thead><tbody>'+buckets.map(x=>'<tr><td>'+esc(x.group)+'</td><td>'+x.trades+'</td><td>'+pc(x.mean_reference_profit_frequency)+'</td><td>'+pc(x.realized_win_rate)+'</td></tr>').join('')+'</tbody></table></div>':'<div class="empty">No eligible current-strategy trades have closed yet.</div>';
+}
+
 function renderAI(){
- const a=(P&&P.ai_portfolio)||{},s=a.summary||{},hist=a.equity_history||[];
- aiEquity.textContent=money(s.equity);aiPnl.textContent=(Number(s.total_pnl||0)>=0?'+':'')+money(s.total_pnl||0);aiPnl.className='value '+(Number(s.total_pnl||0)>=0?'good':'bad');renderReadiness(a,s);
- aiWin.textContent=s.win_rate==null?'—':pc(s.win_rate);aiTrades.textContent=(s.closed_trades||0)+' closed · '+(s.open_positions||0)+' open';aiDd.textContent=pc(s.max_drawdown);
- aiOpen.innerHTML=(a.open||[]).map(p=>'<tr><td>'+esc(p.ticker)+'</td><td>'+esc(p.expiration)+' '+money(p.strike)+' '+esc(p.type)+'</td><td>'+p.qty+'</td><td>'+money(p.entry_price)+'</td><td>'+money(p.last_mark)+'</td><td class="'+((p.unrealized_pnl||0)>=0?'good':'bad')+'">'+money(p.unrealized_pnl)+'</td><td>'+num(p.entry_score,1)+'</td><td><span class="pill">'+esc(p.exit_signal||'hold')+'</span></td><td>'+esc((p.entry_reasons||[]).join(' · '))+'</td></tr>').join('')||'<tr><td colspan="9" class="empty">No open AI paper positions.</td></tr>';
- aiClosed.innerHTML=(a.closed||[]).slice().reverse().map(p=>'<tr><td>'+esc(p.ticker)+'</td><td>'+esc(p.expiration)+' '+money(p.strike)+' '+esc(p.type)+'</td><td>'+money(p.entry_price)+'</td><td>'+money(p.exit_price)+'</td><td class="'+((p.pnl||0)>=0?'good':'bad')+'">'+money(p.pnl)+'</td><td>'+esc(p.exit_reason||'—')+'</td><td>'+esc(String(p.opened_at||'').slice(0,10))+'</td><td>'+esc(String(p.closed_at||'').slice(0,10))+'</td></tr>').join('')||'<tr><td colspan="8" class="empty">No closed AI paper trades yet.</td></tr>';
+ const a=(P&&P.ai_portfolio)||{},version=a.strategy_version||null,s=a.strategy_summary||a.summary||{},allHist=a.equity_history||[],hist=version?allHist.filter(x=>x.strategy_version===version):allHist;
+ const aiOpenRows=(a.open||[]).filter(p=>!version||p.strategy_version===version),aiClosedRows=(a.closed||[]).filter(p=>!version||p.strategy_version===version);
+ aiEquity.textContent=money(s.equity);aiPnl.textContent=(Number(s.total_pnl||0)>=0?'+':'')+money(s.total_pnl||0);aiPnl.className='value '+(Number(s.total_pnl||0)>=0?'good':'bad');renderReadiness(a,s);renderForwardValidation(a);
+ aiWin.textContent=s.win_rate==null?'—':pc(s.win_rate);aiTrades.textContent=(s.closed_trades||0)+' closed · '+(s.open_positions||0)+' open'+(version?' · '+version:'');aiDd.textContent=pc(s.max_drawdown);
+ aiOpen.innerHTML=aiOpenRows.map(p=>'<tr><td>'+esc(p.ticker)+'</td><td>'+esc(p.expiration)+' '+money(p.strike)+' '+esc(p.type)+'</td><td>'+p.qty+'</td><td>'+money(p.entry_price)+'</td><td>'+money(p.last_mark)+'</td><td class="'+((p.unrealized_pnl||0)>=0?'good':'bad')+'">'+money(p.unrealized_pnl)+'</td><td>'+num(p.entry_score,1)+'</td><td><span class="pill">'+esc(p.exit_signal||'hold')+'</span></td><td>'+esc((p.entry_reasons||[]).join(' · '))+'</td></tr>').join('')||'<tr><td colspan="9" class="empty">No open AI paper positions.</td></tr>';
+ aiClosed.innerHTML=aiClosedRows.slice().reverse().map(p=>'<tr><td>'+esc(p.ticker)+'</td><td>'+esc(p.expiration)+' '+money(p.strike)+' '+esc(p.type)+'</td><td>'+money(p.entry_price)+'</td><td>'+money(p.exit_price)+'</td><td class="'+((p.pnl||0)>=0?'good':'bad')+'">'+money(p.pnl)+'</td><td>'+esc(p.exit_reason||'—')+'</td><td>'+esc(String(p.opened_at||'').slice(0,10))+'</td><td>'+esc(String(p.closed_at||'').slice(0,10))+'</td></tr>').join('')||'<tr><td colspan="8" class="empty">No closed AI paper trades yet.</td></tr>';
  const at=a.attribution||{}, sections=[['TYPE',at.by_type],['REGIME',at.by_regime],['DTE',at.by_dte],['SCORE',at.by_score],['HISTORICAL PROBABILITY',at.by_historical_probability],['IV ENVIRONMENT',at.by_iv_environment]];
  aiAttrib.innerHTML=sections.map(z=>'<div class="panel" style="margin-top:10px"><div class="label">'+z[0]+'</div><table><thead><tr><th>Group</th><th>Trades</th><th>Win rate</th><th>Total P/L</th><th>Avg P/L</th><th>Return on premium</th></tr></thead><tbody>'+((z[1]||[]).map(g=>'<tr><td>'+esc(g.group)+'</td><td>'+g.trades+'</td><td>'+pc(g.win_rate)+'</td><td class="'+((g.total_pnl||0)>=0?'good':'bad')+'">'+money(g.total_pnl)+'</td><td>'+money(g.avg_pnl)+'</td><td>'+pc(g.return_on_premium)+'</td></tr>').join('')||'<tr><td colspan="6" class="empty">Not enough closed trades yet.</td></tr>')+'</tbody></table></div>').join('')+'<div class="sub">'+esc(at.note||'Attribution begins after trades close.')+'</div>';
  aiDecisions.innerHTML=(a.decisions||[]).slice().reverse().map(d=>'<tr><td>'+esc(String(d.at||'').replace('T',' ').slice(0,16))+'</td><td>'+esc(d.ticker||'—')+'</td><td>'+esc(d.contract||'—')+'</td><td>'+esc(d.action||'—')+'</td><td>'+esc(d.qty||'—')+'</td><td>'+money(d.price)+'</td><td>'+num(d.score,1)+'</td><td>'+esc(d.reason||'—')+'</td></tr>').join('')||'<tr><td colspan="8" class="empty">No AI decisions recorded yet.</td></tr>';
