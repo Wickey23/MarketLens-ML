@@ -244,3 +244,13 @@ def test_forward_validation_is_current_strategy_only():
     assert out["closed_trades"]==1
     assert out["mean_actual_pnl_per_contract"]==20.0
     assert out["mean_expected_pnl_error_per_contract"]==10.0
+
+
+def test_ai_respects_tradier_closed_market_clock():
+    s=snap()
+    s["market_clock"]={"source":"Tradier","state":"closed"}
+    state={"starting_cash":10000.0,"cash":10000.0,"open":[],"closed":[],"equity_history":[],"decisions":[]}
+    out=run_ai_paper_portfolio(s,state=state,now_dt=TEST_NOW)
+    assert out["open"]==[]
+    assert out["paper_market_session_open"] is False
+    assert out["market_clock_state"]=="closed"
