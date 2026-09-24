@@ -16,7 +16,11 @@ LIQUID_OPTION_UNIVERSE=[
     "PLTR","ORCL","CRM","INTC","MU","QCOM","SOFI","JPM","BAC","GS","MS","C",
     "WFC","V","MA","XOM","CVX","COP","OXY","UNH","LLY","JNJ","PFE","MRK",
     "ABBV","WMT","COST","HD","LOW","DIS","NKE","BA","CAT","GE","F","GM",
-    "UBER","COIN","IWM","DIA","XLF","XLK","XLE","SMH","TLT","GLD",
+    "UBER","COIN","ARM","SMCI","SHOP","NOW","ADBE","PANW","CRWD","SNOW",
+    "MCD","SBUX","TGT","ABNB","BKNG","RCL","CCL","TMO","AMGN","GILD","CVS",
+    "DE","RTX","LMT","UPS","DAL","SLB","EOG","AXP","SCHW",
+    "IWM","DIA","XLF","XLK","XLE","SMH","TLT","GLD","XLY","XLP","XLV","XLI",
+    "XLU","XLB","XBI","KRE","HYG","EEM","ARKK",
 ]
 
 
@@ -117,5 +121,7 @@ def choose_research_universe(core=None, manual=None, max_total=12):
         "core":core,
         "manual":manual,
         "ranked_candidates":ranked,
-        "method":"Underlying liquidity + recent movement/volatility screen; full options quality and historical evidence are evaluated later.",
+        "broad_universe_size":len(LIQUID_OPTION_UNIVERSE),
+        "deep_analysis_limit":max_total,
+        "method":"Broad liquid-option universe is screened cheaply by underlying liquidity and recent movement/volatility; only the selected subset receives expensive chain, replay and model analysis.",
     }
