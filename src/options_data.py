@@ -52,6 +52,31 @@ def _as_list(value):
     return value if isinstance(value,list) else [value]
 
 
+def tradier_market_clock():
+    """Best-effort authoritative market state from Tradier production."""
+    if not os.getenv("TRADIER_ACCESS_TOKEN"):
+        return {"source":"Tradier","state":"unconfigured"}
+    try:
+        body=_tradier_get("markets/clock",{})
+        clock=body.get("clock") or {}
+        return {
+            "source":"Tradier",
+            "state":str(clock.get("state") or "unknown").lower(),
+            "date":clock.get("date"),
+            "description":clock.get("description"),
+            "timestamp":clock.get("timestamp"),
+            "next_change":clock.get("next_change"),
+            "next_state":clock.get("next_state"),
+        }
+    except Exception as exc:
+        code=getattr(exc,"code",None)
+        return {
+            "source":"Tradier",
+            "state":"unknown",
+            "error":f"HTTP {code}" if code is not None else type(exc).__name__,
+        }
+
+
 def _tradier_expirations(ticker, max_expiries):
     body=_tradier_get("markets/options/expirations",{
         "symbol":ticker,
