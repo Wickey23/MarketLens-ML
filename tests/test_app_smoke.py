@@ -195,3 +195,21 @@ def test_read_data_short_cache(monkeypatch):
     b=market_app.read_data()
     assert calls["n"]==1
     assert a["generated_at"]==b["generated_at"]
+
+
+def test_stream_session_fails_closed_without_control_key(monkeypatch):
+    monkeypatch.setenv("TRADIER_ACCESS_TOKEN","tradier-secret")
+    monkeypatch.delenv("MARKETLENS_CONTROL_KEY",raising=False)
+    client=market_app.app.test_client()
+    r=client.post("/api/market-stream/session")
+    assert r.status_code==503
+    assert r.get_json()["required_env"]=="MARKETLENS_CONTROL_KEY"
+
+
+def test_research_trigger_fails_closed_without_control_key(monkeypatch):
+    monkeypatch.setenv("GITHUB_ACTIONS_TOKEN","github-secret")
+    monkeypatch.delenv("MARKETLENS_CONTROL_KEY",raising=False)
+    client=market_app.app.test_client()
+    r=client.post("/api/run-research",json={"ticker":"SPY"})
+    assert r.status_code==503
+    assert r.get_json()["required_env"]=="MARKETLENS_CONTROL_KEY"
