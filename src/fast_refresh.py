@@ -127,12 +127,19 @@ def merge(old,new,learning=None):
     for k in keep:
         if k in old:
             new[k]=old[k]
+    # Preserve deep-research earnings history across lightweight refreshes.
+    old_earn=((old.get("company_context") or {}).get("earnings") or {})
+    new_ctx=new.setdefault("company_context",{})
+    new_earn=new_ctx.setdefault("earnings",{})
+    for k in ("historical_moves","avg_abs_1d_move","median_abs_1d_move"):
+        if new_earn.get(k) is None and old_earn.get(k) is not None:
+            new_earn[k]=old_earn[k]
     try:
         raw=download_prices(new["ticker"],"2010-01-01")
         regimes=classify_regime(raw)
         chain=(new["options"].get("chain") or {})
         radar_spot=float(chain.get("underlying_price") or new["price"])
-        new["options"]["opportunity_radar"]=build_opportunity_radar(raw,(chain.get("contracts") or []),regimes,new.get("regime"),new.get("evidence") or {},radar_spot,learning=learning,context=new.get("company_context") or {},relative_strength=new.get("relative_strength") or {},model_probability=new.get("probability_5d_up"))
+        new["options"]["opportunity_radar"]=build_opportunity_radar(raw,(chain.get("contracts") or []),regimes,new.get("regime"),new.get("evidence") or {},radar_spot,learning=learning,context=new.get("company_context") or {},relative_strength=new.get("relative_strength") or {},model_probability=new.get("probability_5d_up"),options_summary=(new.get("options") or {}).get("summary") or {})
     except Exception as exc:
         new["options"]["opportunity_radar"]={"state":"unavailable","opportunities":[],"watchlist":[],"error":str(exc)}
     return new
