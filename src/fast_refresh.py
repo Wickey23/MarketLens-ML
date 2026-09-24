@@ -68,7 +68,12 @@ def quick_snapshot(ticker):
             "p90":sf(rr.quantile(.90)),
             "realized_move_1sd":sf(daily.rolling(252).std().iloc[-1]*sqrt(h)),
         }
-    chain=option_snapshot(ticker,float(close.iloc[-1]),annual_rv)
+    research_close=float(close.iloc[-1])
+    chain=option_snapshot(ticker,research_close,annual_rv)
+    market_spot=sf(chain.get("underlying_price")) or research_close
+    underlying_quote=chain.get("underlying_quote") or {}
+    previous_close=sf(underlying_quote.get("previous_close"))
+    market_change_1d=(market_spot/previous_close-1) if previous_close and previous_close>0 else sf(daily.iloc[-1])
     regime_series=classify_regime(raw)
     current_regime=str(regime_series.iloc[-1])
     try:
@@ -78,8 +83,9 @@ def quick_snapshot(ticker):
     return {
         "ticker":ticker,
         "as_of":str(raw.index[-1].date()),
-        "price":sf(close.iloc[-1]),
-        "change_1d":sf(daily.iloc[-1]),
+        "price":sf(market_spot),
+        "research_close":sf(research_close),
+        "change_1d":sf(market_change_1d),
         "change_5d":sf(close.pct_change(5).iloc[-1]),
         "regime":current_regime,
         "volatility_20d":annual_rv,
@@ -91,7 +97,7 @@ def quick_snapshot(ticker):
             "horizons":horizons,
             "realized_vol_20d":annual_rv,
             "chain":chain,
-            "summary":options_summary(chain,float(close.iloc[-1])),
+            "summary":options_summary(chain,float(market_spot)),
             "_radar_inputs":{"current_regime":current_regime},
         },
         "history":[{"date":str(i.date()),"close":sf(v)} for i,v in close.tail(260).items()],
@@ -108,7 +114,9 @@ def merge(old,new,learning=None):
     try:
         raw=download_prices(new["ticker"],"2010-01-01")
         regimes=classify_regime(raw)
-        new["options"]["opportunity_radar"]=build_opportunity_radar(raw,((new["options"].get("chain") or {}).get("contracts") or []),regimes,new.get("regime"),new.get("evidence") or {},float(new["price"]),learning=learning,context=new.get("company_context") or {},relative_strength=new.get("relative_strength") or {},model_probability=new.get("probability_5d_up"))
+        chain=(new["options"].get("chain") or {})
+        radar_spot=float(chain.get("underlying_price") or new["price"])
+        new["options"]["opportunity_radar"]=build_opportunity_radar(raw,(chain.get("contracts") or []),regimes,new.get("regime"),new.get("evidence") or {},radar_spot,learning=learning,context=new.get("company_context") or {},relative_strength=new.get("relative_strength") or {},model_probability=new.get("probability_5d_up"))
     except Exception as exc:
         new["options"]["opportunity_radar"]={"state":"unavailable","opportunities":[],"watchlist":[],"error":str(exc)}
     return new
