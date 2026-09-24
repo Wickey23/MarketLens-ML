@@ -9,7 +9,7 @@ import numpy as np
 from src.company_context import company_context
 from src.data_loader import download_prices
 from src.features import build_features
-from src.options_data import option_snapshot
+from src.options_data import option_snapshot, tradier_market_clock
 from src.regime import classify_regime
 from src.opportunity_radar import build_opportunity_radar
 from src.ai_paper_trader import load_state, save_state, run_ai_paper_portfolio, performance_summary, performance_attribution, learning_profile, paper_to_real_readiness, strategy_performance_summary, forward_validation_summary, CURRENT_STRATEGY_VERSION
@@ -153,6 +153,7 @@ def main():
     else:
         p["tickers"]=[by[t] for t in tickers if t in by]
     p["generated_at"]=datetime.now(timezone.utc).isoformat()
+    p["market_clock"]=tradier_market_clock()
     p["fast_generated_at"]=p["generated_at"]
     p["errors"]=errors
     ai_state=run_ai_paper_portfolio(p,load_state())
