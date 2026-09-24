@@ -170,6 +170,12 @@
       "equity": 10015.0,
       "cash": 10015.0,
       "open_value": 0
+    },
+    {
+      "at": "2026-09-24T01:24:10.075669+00:00",
+      "equity": 10015.0,
+      "cash": 10015.0,
+      "open_value": 0
     }
   ],
   "decisions": [
@@ -326,8 +332,34 @@
       "action": "skip",
       "reason": "risk budget below one contract",
       "strategy_version": "v2_conservative"
+    },
+    {
+      "at": "2026-09-24T01:24:10.075669+00:00",
+      "ticker": "SPY",
+      "contract": "SPY261001C00765000",
+      "action": "skip",
+      "score": 80.0,
+      "reason": "theta burden above autonomous policy",
+      "strategy_version": "v2_conservative"
+    },
+    {
+      "at": "2026-09-24T01:24:10.075669+00:00",
+      "ticker": "NVDA",
+      "contract": "NVDA260925C00217500",
+      "action": "skip",
+      "score": 90.9,
+      "reason": "DTE outside autonomous policy",
+      "strategy_version": "v2_conservative"
+    },
+    {
+      "at": "2026-09-24T01:24:10.075669+00:00",
+      "ticker": "VOO",
+      "contract": "VOO261016C00685000",
+      "action": "skip",
+      "reason": "risk budget below one contract",
+      "strategy_version": "v2_conservative"
     }
   ],
-  "updated_at": "2026-09-23T23:55:31.744976+00:00",
-  "last_processed_snapshot": "2026-09-23T23:55:31.744783+00:00"
+  "updated_at": "2026-09-24T01:24:10.075669+00:00",
+  "last_processed_snapshot": "2026-09-24T01:24:10.075497+00:00"
 }
