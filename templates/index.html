@@ -156,7 +156,7 @@ body{background:radial-gradient(circle at 50% -20%,#10203a 0,transparent 38%),va
 </main>
 
 <script>
-let liveQuoteTimer=null,liveOptionTimer=null,dataSyncTimer=null,marketStreamSocket=null,marketStreamSession=null,marketStreamConnected=false,marketStreamReconnect=null,streamRenderTimer=null;
+let liveQuoteTimer=null,liveOptionTimer=null,dataSyncTimer=null,paperQuoteTimer=null,marketStreamSocket=null,marketStreamSession=null,marketStreamConnected=false,marketStreamReconnect=null,streamRenderTimer=null;let paperOptionQuoteCache={},paperUnderlyingQuoteCache={};
 let controlKey=sessionStorage.getItem('marketlens_control_key')||'';
 async function controlledFetch(url,options={}){
   const run=async()=>{
@@ -681,6 +681,35 @@ function scenario(){
  scenarioValue.textContent='Estimated value '+money(v)+' · P/L '+(pnl>=0?'+':'')+money(pnl);
  scenarioValue.className='value '+(pnl>=0?'good':'bad');scenarioText.textContent='Underlying '+money(S)+' · '+days+' DTE · IV '+pc(iv)+'. Black-Scholes scenario estimate; not a guaranteed quote.';
 }
+async function refreshPaperMarketQuotes(){
+ if(document.hidden)return;
+ const s=paperState(),positions=[...(s.open||[]),...(s.pending||[])];
+ const symbols=[...new Set(positions.map(p=>p.contract_symbol).filter(Boolean))].slice(0,12);
+ const tickers=[...new Set(positions.map(p=>p.ticker).filter(Boolean))].slice(0,12);
+ try{
+   const results=await Promise.all(symbols.map(async sym=>{
+     try{const r=await fetch('/api/live-option-quote?symbol='+encodeURIComponent(sym),{cache:'no-store'}),q=await r.json();return r.ok&&q.ok?[sym,q]:null}catch(e){return null}
+   }));
+   results.filter(Boolean).forEach(([sym,q])=>paperOptionQuoteCache[sym]=q);
+ }catch(e){}
+ if(tickers.length){
+   try{
+     const r=await fetch('/api/live-quotes?tickers='+encodeURIComponent(tickers.join(',')),{cache:'no-store'}),j=await r.json();
+     if(r.ok&&j.ok)(j.quotes||[]).forEach(q=>{if(q&&q.ticker)paperUnderlyingQuoteCache[q.ticker]=q});
+   }catch(e){}
+ }
+ if(positions.length)renderPaper();
+}
+function startPaperQuotePolling(){
+ if(paperQuoteTimer)clearInterval(paperQuoteTimer);
+ refreshPaperMarketQuotes();
+ paperQuoteTimer=setInterval(refreshPaperMarketQuotes,10000);
+}
+function paperQuoteFor(p){
+ const live=p&&p.contract_symbol?paperOptionQuoteCache[p.contract_symbol]:null;
+ if(live)return live;
+ return lookupContract(p);
+}
 function paperState(){try{const s=JSON.parse(localStorage.getItem('marketlens_paper_v1'))||{};return{open:s.open||[],closed:s.closed||[],pending:s.pending||[],equityHistory:s.equityHistory||[]}}catch(e){return{open:[],closed:[],pending:[],equityHistory:[]}}}
 function toggleLimit(){paperLimit.style.display=paperOrderType.value==='limit'?'block':'none';if(paperOrderType.value==='limit'&&selectedContract)paperLimit.value=num(selectedContract.mid,2)}
 function savePaper(s){localStorage.setItem('marketlens_paper_v1',JSON.stringify(s))}
@@ -794,12 +823,12 @@ function submitPaperOrder(){
    const {requested_price,order_type,...p}=o;s.open.push({...p,entry_price:fill,opened_at:new Date().toISOString()});
    runStatus.textContent='Market paper order filled';
  }
- pendingReview=null;orderTicket.style.display='none';savePaper(s);renderPaper();
+ pendingReview=null;orderTicket.style.display='none';savePaper(s);renderPaper();refreshPaperMarketQuotes();
 }
 function processPending(s){
  let filled=0,cash=paperBuyingPower(s),remain=[];
  (s.pending||[]).forEach(o=>{
-   const q=lookupContract(o),ask=q&&q.ask!=null?Number(q.ask):null;
+   const q=paperQuoteFor(o),ask=q&&q.ask!=null?Number(q.ask):null;
    if(ask!=null&&ask<=Number(o.limit_price)){
      const fill=Math.min(ask,Number(o.limit_price)),cost=fill*100*Number(o.qty||1);
      if(cost<=cash){
@@ -820,16 +849,20 @@ function historicalSpotOnOrBefore(t,date){
 }
 function lookupMark(p){
  const t=(P.tickers||[]).find(x=>x.ticker===p.ticker);if(!t)return{mark:null,spot:null};
+ const live=p.contract_symbol?paperOptionQuoteCache[p.contract_symbol]:null;
+ const under=paperUnderlyingQuoteCache[p.ticker];
+ const liveSpot=under&&under.price!=null?Number(under.price):(t.live_price!=null?Number(t.live_price):Number(t.price));
+ if(live)return{mark:(live.bid&&Number(live.bid)>0)?Number(live.bid):null,indicative:live.mid,spot:liveSpot,provider:live.provider,data_confidence:live.data_confidence,execution_realtime:!!live.execution_realtime};
  const rows=((((t.options||{}).chain||{}).contracts)||[]);const x=rows.find(z=>(p.contract_symbol&&z.contract_symbol===p.contract_symbol)||(!p.contract_symbol&&z.type===p.type&&z.strike===p.strike&&z.expiration===p.expiration));
- if(x)return{mark:(x.bid&&x.bid>0)?Number(x.bid):null,indicative:x.mid,spot:(t.live_price!=null?t.live_price:t.price)};
+ if(x)return{mark:(x.bid&&x.bid>0)?Number(x.bid):null,indicative:x.mid,spot:liveSpot,provider:x.selected_quote_provider||x.provider,data_confidence:x.data_confidence,execution_realtime:!!x.execution_realtime};
  const expired=new Date(p.expiration+'T23:59:59Z')<new Date();
  if(expired){const expirySpot=historicalSpotOnOrBefore(t,p.expiration);if(expirySpot!=null){const intrinsic=Math.max(p.type==='call'?expirySpot-p.strike:p.strike-expirySpot,0);return{mark:intrinsic,spot:expirySpot,settled:true}}}
- return{mark:null,spot:t.price};
+ return{mark:null,spot:liveSpot};
 }
 function renderPaper(){
  const s=paperState();const filled=processPending(s);if(filled)savePaper(s);let unreal=0,real=0,cash=10000;paperOpen.innerHTML='';paperClosed.innerHTML='';paperPending.innerHTML='';
  s.open.forEach(p=>{const q=lookupMark(p),cost=p.entry_price*100*p.qty;cash-=cost;const val=q.mark==null?null:q.mark*100*p.qty,pl=val==null?null:val-cost;if(pl!=null)unreal+=pl;paperOpen.innerHTML+='<tr><td>'+p.ticker+'</td><td>'+p.expiration+' '+money(p.strike)+' '+p.type+'</td><td>'+new Date(p.opened_at).toLocaleDateString()+'</td><td>'+money(p.entry_price)+'</td><td>'+money(q.mark)+'</td><td class="'+(pl==null?'':pl>=0?'good':'bad')+'">'+(pl==null?'—':((pl>=0?'+':'')+money(pl)))+'</td><td>'+money(q.spot)+'</td><td>'+((q.spot==null||p.entry_spot==null)?'—':pc(q.spot/p.entry_spot-1))+'</td><td>'+(p.entry_evidence?esc(p.entry_evidence):'—')+'</td><td><button class="btn" onclick="closePaper('+p.id+')">Close</button></td></tr>'});
- s.pending.forEach(p=>{const q=lookupContract(p);paperPending.innerHTML+='<tr><td>'+p.ticker+'</td><td>'+p.expiration+' '+money(p.strike)+' '+p.type+'</td><td>'+p.qty+'</td><td>'+money(p.limit_price)+'</td><td>'+money(q&&q.ask)+'</td><td class="warn">Pending</td><td><button class="btn" onclick="cancelPending('+p.id+')">Cancel</button></td></tr>'});if(!s.pending.length)paperPending.innerHTML='<tr><td colspan="7" class="empty">No pending orders.</td></tr>';
+ s.pending.forEach(p=>{const q=paperQuoteFor(p);paperPending.innerHTML+='<tr><td>'+p.ticker+'</td><td>'+p.expiration+' '+money(p.strike)+' '+p.type+'</td><td>'+p.qty+'</td><td>'+money(p.limit_price)+'</td><td>'+money(q&&q.ask)+'</td><td class="warn">Pending</td><td><button class="btn" onclick="cancelPending('+p.id+')">Cancel</button></td></tr>'});if(!s.pending.length)paperPending.innerHTML='<tr><td colspan="7" class="empty">No pending orders.</td></tr>';
  s.closed.forEach(p=>{real+=p.pnl;cash+=p.pnl;const debit=Number(p.entry_price||0)*100*Number(p.qty||1),rr=debit>0?Number(p.pnl||0)/debit:null;paperClosed.innerHTML+='<tr><td>'+p.ticker+'</td><td>'+p.expiration+' '+money(p.strike)+' '+p.type+'</td><td>'+money(p.entry_price)+'</td><td>'+money(p.exit_price)+'</td><td class="'+(p.pnl>=0?'good':'bad')+'">'+(p.pnl>=0?'+':'')+money(p.pnl)+'</td><td class="'+(rr==null?'':rr>=0?'good':'bad')+'">'+pc(rr)+'</td><td>'+pc(p.entry_historical_mean_return)+'</td><td>'+pc(p.entry_profit_frequency)+'</td><td>'+num(p.entry_combined_evidence_score,1)+'/100 · '+esc(p.entry_market_data_confidence||'legacy')+'</td><td>'+new Date(p.opened_at).toLocaleDateString()+'</td><td>'+new Date(p.closed_at).toLocaleDateString()+'</td></tr>'});
  const openVal=s.open.reduce((a,p)=>{const q=lookupMark(p);return a+(q.mark==null?0:q.mark*100*p.qty)},0),equity=cash+openVal;
  paperEquity.textContent=money(equity);paperBuying.textContent=money(cash);paperOptionValue.textContent=money(openVal);paperCount.textContent=s.open.length;paperUnreal.textContent=(unreal>=0?'+':'')+money(unreal);paperReal.textContent=(real>=0?'+':'')+money(real);paperUnreal.className='value '+(unreal>=0?'good':'bad');paperReal.className='value '+(real>=0?'good':'bad');
@@ -908,7 +941,7 @@ function renderAI(){
 }
 
 function draw(){if(ch)ch.destroy();ch=new Chart(chart,{type:'line',data:{labels:(C.history||[]).map(x=>x.date),datasets:[{label:C.ticker+' close',data:(C.history||[]).map(x=>x.close),borderWidth:2,pointRadius:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#8190a5'}}},scales:{x:{ticks:{color:'#657489',maxTicksLimit:8},grid:{display:false}},y:{ticks:{color:'#657489'},grid:{color:'#151d29'}}}}})}
-load().then(()=>{startResearchSync();startMarketStream();});
+load().then(()=>{startResearchSync();startMarketStream();startPaperQuotePolling();});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){refreshLiveQuote();syncResearchSnapshot();if(marketStreamConnected)updateMarketStreamSymbols();else startMarketStream();}});
 </script>
 </body></html>
