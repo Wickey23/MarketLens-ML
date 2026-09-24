@@ -255,3 +255,44 @@ def test_live_quote_can_crosscheck_alpaca_and_tradier(monkeypatch):
     assert q["provider"]=="Alpaca Market Data"
     assert q["data_confidence"]=="high"
     assert len(q["provider_candidates"])==3
+
+
+def test_live_option_quote_route(monkeypatch):
+    monkeypatch.setattr(market_app,"live_option_quote",lambda symbol:{
+        "symbol":symbol,"bid":10.0,"ask":10.1,"mid":10.05,
+        "provider":"test","provider_key":"tradier","feed":"consolidated",
+        "data_confidence":"medium","execution_realtime":True
+    })
+    client=market_app.app.test_client()
+    r=client.get("/api/live-option-quote?symbol=NVDA261002C00210000")
+    assert r.status_code==200
+    j=r.get_json()
+    assert j["ok"] is True
+    assert j["execution_realtime"] is True
+    assert r.headers["Cache-Control"].startswith("no-store")
+
+
+def test_live_option_quote_aggregates_tradier_and_alpaca(monkeypatch):
+    market_app._live_option_quote_cache.clear()
+    monkeypatch.setenv("TRADIER_ACCESS_TOKEN","tradier-test")
+    monkeypatch.setenv("ALPACA_API_KEY_ID","alpaca-key")
+    monkeypatch.setenv("ALPACA_API_SECRET_KEY","alpaca-secret")
+    monkeypatch.setattr(market_app,"_tradier_live_option_quote",lambda *args:{
+        "provider":"Tradier Brokerage API","provider_key":"tradier","feed":"consolidated",
+        "realtime":True,"consolidated":True,"bid":10.0,"ask":10.1,
+        "quote_time":"2026-09-24T19:30:00+00:00"
+    })
+    monkeypatch.setattr(market_app,"_alpaca_live_option_quote",lambda *args:{
+        "provider":"Alpaca OPRA","provider_key":"alpaca_opra","feed":"opra",
+        "realtime":True,"consolidated":True,"bid":10.01,"ask":10.11,
+        "quote_time":"2026-09-24T19:30:01+00:00"
+    })
+    monkeypatch.setattr(market_app,"_snapshot_option_quote",lambda symbol:{
+        "provider":"snapshot","provider_key":"snapshot","feed":"snapshot",
+        "realtime":False,"consolidated":False,"bid":9.9,"ask":10.2,
+        "quote_time":"2026-09-24T19:20:00+00:00"
+    })
+    q=market_app.live_option_quote("NVDA261002C00210000")
+    assert q["data_confidence"]=="high"
+    assert q["execution_realtime"] is True
+    assert len(q["provider_candidates"])==3
