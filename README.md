@@ -30,23 +30,38 @@ The web application reads generated research state from `market-data`. Vercel de
 
 ## Market data
 
-### Tradier production path
+### Multi-provider router
 
-When `TRADIER_ACCESS_TOKEN` is configured:
+MarketLens does not blindly take the newest timestamp. It normalizes every configured provider, ranks the feed by authority, checks freshness, and compares providers for material disagreement.
 
-- REST underlying quotes prefer Tradier.
-- Options chains use Tradier production data.
-- Option-chain economics use the same Tradier underlying quote as the option snapshot.
-- Tradier/ORATS Greeks are used when available.
-- The browser can request a short-lived Tradier streaming session without receiving the permanent token.
-- The autonomous paper strategy only opens new positions from option snapshots explicitly marked real-time.
-- Tradier's market clock is attached to research snapshots and helps gate simulated execution.
+Current provider roles:
 
-The permanent Tradier token stays server-side / in GitHub Actions secrets. The project contains no brokerage-order submission code.
+- **Tradier production** — consolidated real-time U.S. stock/options data when the brokerage account is entitled; also supplies the market clock and browser-safe streaming session.
+- **Alpaca OPRA / SIP** — consolidated real-time options/stock feeds when the configured Alpaca plan is entitled.
+- **Alpaca IEX** — real-time stock exchange-subset data, useful for cross-checking but lower authority than SIP/consolidated feeds.
+- **Alpaca indicative options** — near-real-time indicative options quotes; useful as a secondary reference but deliberately not execution-grade.
+- **Finnhub** — optional underlying-quote cross-check.
+- **Yahoo/yfinance** — low-authority delayed/best-effort research fallback.
 
-### Fallback path
+For each selected quote MarketLens can expose the winning provider, feed, quote age, cross-provider agreement, confidence state, and the candidate provider quotes that were compared. A newer indicative or delayed quote cannot override a trustworthy consolidated feed merely because its timestamp is newer.
 
-Without a production Tradier token, MarketLens can continue research with Yahoo/yfinance and optional Finnhub underlying quotes. Fallback option data may be delayed or stale and **does not qualify for the current autonomous forward experiment**.
+Option quotes are considered execution-grade for the autonomous paper strategy only when the selected source is consolidated real-time data, its timestamp is present and no more than 60 seconds old, and trusted providers are not in material conflict. The browser polls the selected option contract every five seconds when Tradier streaming is not supplying it; underlying REST quotes use a five-second cache.
+
+When both Tradier and Alpaca OPRA/SIP are available, close agreement can raise the data confidence to **high**. Material disagreement between trusted providers produces **conflict** and blocks autonomous paper entry.
+
+The permanent provider credentials stay server-side / in Vercel and GitHub Actions secrets. The project contains no brokerage-order submission code.
+
+### Provider configuration
+
+Supported environment variables:
+
+- `TRADIER_ACCESS_TOKEN`
+- `ALPACA_API_KEY_ID` and `ALPACA_API_SECRET_KEY`
+- `ALPACA_OPTIONS_FEED` — `indicative` or `opra`
+- `ALPACA_STOCK_FEED` — normally `iex` or `sip`; when omitted, MarketLens defaults to SIP when OPRA is selected and IEX otherwise
+- `FINNHUB_API_KEY` — optional underlying cross-check
+
+If no execution-grade provider is configured, research continues using lower-authority fallbacks, but those quotes **do not qualify for the current autonomous forward experiment**.
 
 ## ML validation
 
@@ -71,7 +86,8 @@ New paper entries require, among other controls:
 - 3–45 DTE
 - valid two-sided bid/ask quote
 - quote freshness within the configured limit
-- real-time option-chain source
+- execution-grade consolidated real-time option quote with a fresh timestamp
+- no material trusted-provider quote conflict
 - maximum spread
 - maximum theta burden relative to debit
 - plausible IV input
@@ -106,6 +122,8 @@ Secrets must never be committed.
 Production/environment variables:
 
 - `TRADIER_ACCESS_TOKEN` — Tradier production token for market data
+- `ALPACA_API_KEY_ID` / `ALPACA_API_SECRET_KEY` — optional Alpaca market-data credentials
+- `ALPACA_OPTIONS_FEED` / `ALPACA_STOCK_FEED` — optional Alpaca entitlement/feed selection
 - `GITHUB_ACTIONS_TOKEN` — server-side token used only to dispatch the lightweight refresh workflow
 - `FINNHUB_API_KEY` — optional underlying-quote fallback
 - `MARKETLENS_CONTROL_KEY` — app control key protecting refresh and streaming-session endpoints
@@ -122,7 +140,7 @@ Every push to `main` runs:
 - inline browser JavaScript syntax check
 - Flask route/API smoke tests
 - feature/target tests
-- options/Tradier integration tests
+- Tradier/Alpaca option integration and multi-provider routing tests
 - Opportunity Radar tests
 - market-universe scanner tests
 - autonomous paper-trader and readiness tests
