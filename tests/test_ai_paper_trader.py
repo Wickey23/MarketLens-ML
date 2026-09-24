@@ -1,18 +1,27 @@
-from datetime import datetime, timezone
-from src.ai_paper_trader import run_ai_paper_portfolio, performance_summary, paper_to_real_readiness
+from datetime import datetime, timezone, timedelta
+from src.ai_paper_trader import (
+    CURRENT_STRATEGY_VERSION,
+    run_ai_paper_portfolio,
+    performance_summary,
+    paper_to_real_readiness,
+    strategy_performance_summary,
+    forward_validation_summary,
+)
+
+TEST_NOW=datetime(2026,9,24,15,0,tzinfo=timezone.utc)
 
 def snap():
     q={"contract_symbol":"ABC1","type":"call","expiration":"2099-12-31","dte":14,"strike":100,
-       "ask":1.0,"bid":.95,"mid":.975,"iv":.25,"spread_pct":.05,"theta_cost_pct_per_day":.01,"last_trade":datetime.now(timezone.utc).isoformat()}
+       "ask":1.0,"bid":.95,"mid":.975,"iv":.25,"spread_pct":.05,"theta_cost_pct_per_day":.01,"last_trade":TEST_NOW.isoformat(),"quote_age_hours":0.0}
     r={"contract_symbol":"ABC1","type":"call","expiration":"2099-12-31","dte":14,"strike":100,
        "score":80,"prob_profit":.62,"expected_pnl_per_contract":18,"historical_scope":"same regime",
        "reasons":["test"],"risks":[]}
     return {"generated_at":"2026-01-01T00:00:00Z","tickers":[{"ticker":"ABC",
-        "options":{"chain":{"contracts":[q]},"opportunity_radar":{"opportunities":[r]}}}]}
+        "options":{"chain":{"contracts":[q],"realtime":True,"source":"test realtime"},"opportunity_radar":{"opportunities":[r]}}}]}
 
 def test_ai_paper_trader_enters_without_real_order():
     state={"starting_cash":10000.0,"cash":10000.0,"open":[],"closed":[],"equity_history":[],"decisions":[]}
-    out=run_ai_paper_portfolio(snap(),state=state)
+    out=run_ai_paper_portfolio(snap(),state=state,now_dt=TEST_NOW)
     assert len(out["open"])==1
     assert out["open"][0]["ticker"]=="ABC"
     assert out["cash"]<10000
@@ -28,7 +37,7 @@ def test_ai_rejects_zero_dte_autonomous_entry():
     q["dte"]=0
     r["dte"]=0
     state={"starting_cash":10000.0,"cash":10000.0,"open":[],"closed":[],"equity_history":[],"decisions":[]}
-    out=run_ai_paper_portfolio(s,state=state)
+    out=run_ai_paper_portfolio(s,state=state,now_dt=TEST_NOW)
     assert out["open"]==[]
     assert any(d.get("action")=="skip" and "DTE outside autonomous policy" in d.get("reason","") for d in out["decisions"])
 
@@ -36,15 +45,16 @@ def test_ai_rejects_zero_dte_autonomous_entry():
 def test_ai_rejects_stale_quote():
     s=snap()
     s["tickers"][0]["options"]["chain"]["contracts"][0]["last_trade"]="2020-01-01T00:00:00+00:00"
+    s["tickers"][0]["options"]["chain"]["contracts"][0]["quote_age_hours"]=100.0
     state={"starting_cash":10000.0,"cash":10000.0,"open":[],"closed":[],"equity_history":[],"decisions":[]}
-    out=run_ai_paper_portfolio(s,state=state)
+    out=run_ai_paper_portfolio(s,state=state,now_dt=TEST_NOW)
     assert out["open"]==[]
     assert any("stale" in d.get("reason","") for d in out["decisions"])
 
 
 def test_legacy_same_day_position_exits_on_bid():
     from datetime import date
-    today=date.today().isoformat()
+    today=TEST_NOW.date().isoformat()
     s=snap()
     q=s["tickers"][0]["options"]["chain"]["contracts"][0]
     q["expiration"]=today
@@ -60,7 +70,7 @@ def test_legacy_same_day_position_exits_on_bid():
         }],
         "closed":[],"equity_history":[],"decisions":[]
     }
-    out=run_ai_paper_portfolio(s,state=state)
+    out=run_ai_paper_portfolio(s,state=state,now_dt=TEST_NOW)
     assert out["open"]==[]
     assert out["closed"][0]["exit_reason"]=="time_risk"
     assert out["closed"][0]["exit_price"]==1.20
@@ -81,13 +91,13 @@ def test_ai_does_not_mark_with_mid_when_bid_unavailable():
         }],
         "closed":[],"equity_history":[],"decisions":[]
     }
-    out=run_ai_paper_portfolio(s,state=state)
+    out=run_ai_paper_portfolio(s,state=state,now_dt=TEST_NOW)
     assert out["open"][0]["last_mark"] is None
 
 
 def test_ai_exit_is_logged_in_decision_history():
     from datetime import date
-    today=date.today().isoformat()
+    today=TEST_NOW.date().isoformat()
     s=snap()
     q=s["tickers"][0]["options"]["chain"]["contracts"][0]
     q["expiration"]=today
@@ -102,7 +112,7 @@ def test_ai_exit_is_logged_in_decision_history():
         }],
         "closed":[],"equity_history":[],"decisions":[]
     }
-    out=run_ai_paper_portfolio(s,state=state)
+    out=run_ai_paper_portfolio(s,state=state,now_dt=TEST_NOW)
     assert any(d.get("action")=="paper_exit" and d.get("reason")=="time_risk" for d in out["decisions"])
 
 
@@ -119,7 +129,7 @@ def test_open_equity_marks_zero_when_contract_has_no_bid():
         }],
         "closed":[],"equity_history":[],"decisions":[]
     }
-    out=run_ai_paper_portfolio(s,state=state)
+    out=run_ai_paper_portfolio(s,state=state,now_dt=TEST_NOW)
     assert out["equity_history"][-1]["open_value"]==0
     assert out["equity_history"][-1]["equity"]==9900
 
@@ -129,7 +139,7 @@ def test_ai_uses_guided_best_overall_contract():
     q2={
         "contract_symbol":"ABC2","type":"call","expiration":"2099-12-31","dte":21,"strike":105,
         "ask":0.8,"bid":0.75,"mid":0.775,"iv":0.25,"spread_pct":0.065,
-        "theta_cost_pct_per_day":0.01,"last_trade":datetime.now(timezone.utc).isoformat()
+        "theta_cost_pct_per_day":0.01,"last_trade":TEST_NOW.isoformat(),"quote_age_hours":0.0
     }
     r2={
         "contract_symbol":"ABC2","type":"call","expiration":"2099-12-31","dte":21,"strike":105,
@@ -142,7 +152,7 @@ def test_ai_uses_guided_best_overall_contract():
     radar["guidance"]={"state":"strong_candidates","best_overall":r2}
     s["tickers"][0]["options"]["chain"]["contracts"].append(q2)
     state={"starting_cash":10000.0,"cash":10000.0,"open":[],"closed":[],"equity_history":[],"decisions":[]}
-    out=run_ai_paper_portfolio(s,state=state)
+    out=run_ai_paper_portfolio(s,state=state,now_dt=TEST_NOW)
     assert len(out["open"])==1
     assert out["open"][0]["contract_key"]=="ABC2"
     assert out["open"][0]["entry_combined_evidence_score"]==84
@@ -161,10 +171,15 @@ def test_readiness_requires_forward_sample():
 def test_readiness_does_not_approve_losing_30_trade_record():
     closed=[]
     for i in range(30):
+        opened=datetime(2026,1,1,tzinfo=timezone.utc)+timedelta(days=i)
         closed.append({
             "ticker":["AAA","BBB","CCC"][i%3],
             "pnl":-5.0,
             "entry_cost":100.0,
+            "strategy_version":CURRENT_STRATEGY_VERSION,
+            "entry_market_data_realtime":True,
+            "opened_at":opened.isoformat(),
+            "closed_at":(opened+timedelta(hours=1)).isoformat(),
         })
     state={
         "starting_cash":10000.0,
@@ -182,3 +197,50 @@ def test_readiness_does_not_approve_losing_30_trade_record():
     assert out["all_checks_pass"] is False
     assert next(x for x in out["checks"] if x["id"]=="net_pnl")["pass"] is False
     assert next(x for x in out["checks"] if x["id"]=="avg_trade")["pass"] is False
+
+
+def test_current_readiness_ignores_legacy_trade():
+    legacy={
+        "ticker":"QQQ","pnl":500.0,"entry_cost":100.0,
+        "strategy_version":"legacy","opened_at":"2026-01-01T15:00:00+00:00",
+        "closed_at":"2026-01-01T16:00:00+00:00",
+    }
+    state={"starting_cash":10000.0,"cash":10500.0,"open":[],"closed":[legacy],"equity_history":[],"decisions":[]}
+    readiness=paper_to_real_readiness(state)
+    assert readiness["closed_trades"]==0
+    assert readiness["state"]=="collecting_forward_data"
+    assert strategy_performance_summary(state)["total_pnl"]==0.0
+
+
+def test_ai_rejects_delayed_chain_for_current_strategy():
+    s=snap()
+    s["tickers"][0]["options"]["chain"]["realtime"]=False
+    state={"starting_cash":10000.0,"cash":10000.0,"open":[],"closed":[],"equity_history":[],"decisions":[]}
+    out=run_ai_paper_portfolio(s,state=state,now_dt=TEST_NOW)
+    assert out["open"]==[]
+    assert any("real-time option data required" in d.get("reason","") for d in out["decisions"])
+
+
+def test_ai_does_not_enter_outside_regular_market_window():
+    s=snap()
+    after_hours=datetime(2026,9,24,22,0,tzinfo=timezone.utc)
+    state={"starting_cash":10000.0,"cash":10000.0,"open":[],"closed":[],"equity_history":[],"decisions":[]}
+    out=run_ai_paper_portfolio(s,state=state,now_dt=after_hours)
+    assert out["open"]==[]
+    assert out["paper_market_session_open"] is False
+
+
+def test_forward_validation_is_current_strategy_only():
+    opened=datetime(2026,1,1,tzinfo=timezone.utc)
+    current={
+        "ticker":"AAA","qty":1,"pnl":20.0,"entry_cost":100.0,
+        "entry_prob_profit":0.60,"entry_expected_pnl":10.0,
+        "strategy_version":CURRENT_STRATEGY_VERSION,
+        "entry_market_data_realtime":True,
+        "opened_at":opened.isoformat(),"closed_at":(opened+timedelta(days=1)).isoformat(),
+    }
+    legacy={**current,"pnl":-999.0,"strategy_version":"legacy"}
+    out=forward_validation_summary({"closed":[current,legacy]})
+    assert out["closed_trades"]==1
+    assert out["mean_actual_pnl_per_contract"]==20.0
+    assert out["mean_expected_pnl_error_per_contract"]==10.0
