@@ -484,6 +484,7 @@ function renderReturnOutlook(){
       '<div class="kv"><span>Combined evidence</span><b>'+num(score,1)+'/100</b></div>'+
       '<div class="kv"><span>Snapshot ask / debit</span><b>'+money(x.ask!=null?x.ask:x.entry_quote)+' / '+money(Number(x.ask!=null?x.ask:x.entry_quote||0)*100)+'</b></div>'+
       '<div class="kv"><span>Profit frequency</span><b>'+pc(x.prob_profit)+'</b></div>'+
+      '<div class="kv"><span>Historical samples</span><b>'+Number(x.samples||0).toLocaleString()+' raw / '+Number(x.effective_samples!=null?x.effective_samples:x.samples||0).toLocaleString()+' overlap-adjusted</b></div>'+
       '<div class="kv"><span>95% interval</span><b>'+ciText+'</b></div>'+
       '<div class="kv"><span>Median P/L</span><b>'+money(x.median_pnl_per_contract)+'</b></div>'+
       '<div class="kv"><span>10th–90th P/L</span><b>'+band+'</b></div>'+
@@ -536,7 +537,7 @@ function renderOptions(){
   optRV.textContent=pc(o.realized_vol_20d);atmMove.textContent=pc(sum.atm_straddle_implied_move);atmExp.textContent=sum.atm_expiration?('Nearest reference expiration '+sum.atm_expiration):'Awaiting chain';optEarnings.textContent=er.days_to_earnings==null?'—':er.days_to_earnings+' days';
   optstatus.textContent=o.status||'Awaiting options data';
   optionsRows.innerHTML=Object.entries(o.horizons||{}).map(([h,x])=>'<tr><td>'+h+' days</td><td>'+pc(x.positive_rate)+'</td><td>'+pc(x.median_return)+'</td><td>'+pc(x.p10)+'</td><td>'+pc(x.p25)+'</td><td>'+pc(x.p75)+'</td><td>'+pc(x.p90)+'</td><td>'+pc(x.realized_move_1sd)+'</td></tr>').join('');
-  const oc=o.chain||{};chainNote.textContent=oc.quote_note||oc.error||'Awaiting option-chain refresh';
+  const oc=o.chain||{};chainNote.textContent=[oc.provider_warning,oc.quote_note||oc.error||'Awaiting option-chain refresh'].filter(Boolean).join(' · ');
   expFilter.innerHTML='<option value="all">All expirations</option>'+(oc.expirations||[]).map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('');
   renderChain();renderReturnOutlook();renderMarketWideOptions();updateMarketStreamSymbols();
 }
