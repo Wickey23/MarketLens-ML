@@ -232,7 +232,14 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
             evidence=t.get("evidence") or {}
             if research_age is None or research_age>48 or evidence.get("mean_roc_auc") is None:
                 guard_reasons.append("recent deep research evidence required")
-            if not chain_realtime: guard_reasons.append("real-time option data required for current strategy")
+            execution_realtime=q.get("execution_realtime")
+            if execution_realtime is None:
+                execution_realtime=chain_realtime
+            quote_confidence=str(q.get("data_confidence") or "unknown").lower()
+            if execution_realtime is not True:
+                guard_reasons.append("execution-grade real-time option data required for current strategy")
+            if quote_confidence=="conflict":
+                guard_reasons.append("market-data providers disagree materially")
             if dte is None or int(dte)<min_dte or int(dte)>max_dte: guard_reasons.append("DTE outside autonomous policy")
             if bid is None or ask is None or float(bid)<=0 or float(ask)<=0 or float(ask)<float(bid): guard_reasons.append("two-sided executable quote unavailable")
             if age is None or age>max_quote_age_hours: guard_reasons.append("option quote is stale or timestamp unavailable")
@@ -245,7 +252,7 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
                 state["decisions"].append({"at":now,"ticker":ticker,"contract":key,"action":"skip","score":r.get("score"),
                                            "reason":"; ".join(guard_reasons),"strategy_version":CURRENT_STRATEGY_VERSION})
                 continue
-            candidates.append((candidate_score,ticker,r,q,chain_source,chain_realtime))
+            candidates.append((candidate_score,ticker,r,q,chain_source,bool(execution_realtime)))
     candidates.sort(reverse=True,key=lambda z:z[0])
 
     # Fixed fractional premium-at-risk sizing, capped at one new contract group per ticker.
@@ -274,7 +281,10 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
              "entry_research_age_hours":timestamp_age_hours(t.get("research_refreshed_at"),now_dt),
              "entry_prob_profit":r.get("prob_profit"),"entry_expected_pnl":r.get("expected_pnl_per_contract"),
              "entry_scope":r.get("historical_scope"),"strategy_version":CURRENT_STRATEGY_VERSION,
-             "entry_market_data_source":chain_source,"entry_market_data_realtime":chain_realtime,
+             "entry_market_data_source":q.get("selected_quote_provider") or chain_source,
+             "entry_market_data_realtime":chain_realtime,
+             "entry_market_data_confidence":q.get("data_confidence"),
+             "entry_provider_agreement_pct":q.get("provider_agreement_pct"),
              "entry_quote_age_hours":quote_age_hours(q,now_dt),"entry_reasons":r.get("reasons") or [],
              "entry_risks":r.get("risks") or [],"entry_research_generated_at":snapshot.get("generated_at")}
         state["open"].append(pos); active_tickers.add(ticker)
