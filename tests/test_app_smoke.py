@@ -81,6 +81,7 @@ def test_live_quotes_rejects_invalid_list():
 
 def test_live_quote_prefers_provider_when_key_present(monkeypatch):
     market_app._live_quote_cache.clear()
+    monkeypatch.delenv("TRADIER_ACCESS_TOKEN",raising=False)
     monkeypatch.setenv("FINNHUB_API_KEY","test-key")
     monkeypatch.setattr(market_app,"_finnhub_live_quote",lambda ticker,key:{
         "ticker":ticker,"price":200.0,"change_pct":0.02,"provider":"Finnhub quote",
@@ -120,3 +121,18 @@ def test_market_stream_session_returns_browser_safe_session(monkeypatch):
     assert j["ok"] is True
     assert j["sessionid"]=="session-123"
     assert "TRADIER_ACCESS_TOKEN" not in r.get_data(as_text=True)
+
+
+def test_live_quote_prefers_tradier_when_configured(monkeypatch):
+    market_app._live_quote_cache.clear()
+    monkeypatch.setenv("TRADIER_ACCESS_TOKEN","tradier-test")
+    monkeypatch.setenv("FINNHUB_API_KEY","finnhub-test")
+    monkeypatch.setattr(market_app,"_tradier_live_quote",lambda ticker,token:{
+        "ticker":ticker,"price":300.0,"change_pct":0.01,"provider":"Tradier Brokerage API",
+        "realtime":True,"delayed":False
+    })
+    monkeypatch.setattr(market_app,"_finnhub_live_quote",lambda *args:(_ for _ in ()).throw(AssertionError("Finnhub should not run")))
+    q=market_app.live_quote("SPY")
+    assert q["price"]==300.0
+    assert q["provider"]=="Tradier Brokerage API"
+    assert q["realtime"] is True
