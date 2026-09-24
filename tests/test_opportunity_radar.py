@@ -121,3 +121,43 @@ def test_guidance_prefers_three_plus_dte_for_default_choices():
     assert g["best_overall"]["risk_tier"] in ("moderate","lower_relative_risk","aggressive")
     assert g["best_overall"]["evidence_confidence"] in ("higher","moderate","limited")
     assert g["best_overall"]["simulator_priority"] is True
+
+
+def test_guidance_tracks_live_execution_quality():
+    base={
+        "state":"investigate","score":80.0,"entry_quote":2.0,
+        "prob_profit":0.64,"prob_profit_ci95":[0.58,0.69],
+        "prob_total_premium_loss":0.18,"expected_return_on_debit":0.28,
+        "median_return_on_debit":0.12,"p10_pnl_per_contract":-75.0,
+        "dte":14,"effective_samples":120,"theta_cost_pct_per_day":0.015,
+        "spread_pct":0.05,"risks":[],"reasons":[],"type":"call",
+    }
+    live={**base,"contract_symbol":"LIVE","execution_realtime":True,
+          "data_confidence":"high","quote_age_seconds":8,
+          "selected_quote_provider":"Tradier Brokerage API"}
+    snap={**base,"contract_symbol":"SNAP","execution_realtime":False,
+          "data_confidence":"low","quote_age_seconds":300,
+          "selected_quote_provider":"Yahoo Finance via yfinance"}
+    g=_guidance_payload([live,snap],{"mean_roc_auc":0.55,"historical_lift_ci95":[0.0,0.04]})
+    assert g["best_overall"]["contract_symbol"]=="LIVE"
+    assert g["best_overall"]["execution_status"]=="verified_live"
+    assert g["best_overall"]["execution_verified_for_forward_test"] is True
+    assert g["best_overall"]["all_data_components"]["market_data_confidence"]=="high"
+
+
+def test_guidance_marks_provider_conflict_and_blocks_forward_test():
+    row={
+        "contract_symbol":"CONFLICT","state":"investigate","score":90.0,
+        "entry_quote":1.5,"prob_profit":0.66,"prob_profit_ci95":[0.59,0.72],
+        "prob_total_premium_loss":0.16,"expected_return_on_debit":0.35,
+        "median_return_on_debit":0.15,"p10_pnl_per_contract":-60.0,
+        "dte":21,"effective_samples":150,"theta_cost_pct_per_day":0.01,
+        "spread_pct":0.04,"risks":[],"reasons":[],"type":"call",
+        "execution_realtime":True,"data_confidence":"conflict","quote_age_seconds":5,
+    }
+    g=_guidance_payload([row],{"mean_roc_auc":0.57,"historical_lift_ci95":[0.01,0.05]})
+    x=g["best_overall"]
+    assert x["execution_status"]=="conflict"
+    assert x["execution_verified_for_forward_test"] is False
+    assert x["simulator_priority"] is False
+    assert x["execution_points"] < 0
