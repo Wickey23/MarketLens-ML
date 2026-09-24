@@ -325,6 +325,7 @@ def analyze(ticker,learning=None):
     }
     try:
         options["chain"]=option_snapshot(ticker,research_close,annual_rv)
+        options["status"]="Real-time Tradier option chain active" if options["chain"].get("realtime") is True else "Historical distribution + fallback option snapshot active"
         market_spot=sf(options["chain"].get("underlying_price")) or research_close
         underlying_quote=options["chain"].get("underlying_quote") or {}
         previous_close=sf(underlying_quote.get("previous_close"))
