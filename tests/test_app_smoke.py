@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 import app as market_app
 
 
@@ -280,12 +281,12 @@ def test_live_option_quote_aggregates_tradier_and_alpaca(monkeypatch):
     monkeypatch.setattr(market_app,"_tradier_live_option_quote",lambda *args:{
         "provider":"Tradier Brokerage API","provider_key":"tradier","feed":"consolidated",
         "realtime":True,"consolidated":True,"bid":10.0,"ask":10.1,
-        "quote_time":"2026-09-24T19:30:00+00:00"
+        "quote_time":datetime.now(timezone.utc).isoformat()
     })
     monkeypatch.setattr(market_app,"_alpaca_live_option_quote",lambda *args:{
         "provider":"Alpaca OPRA","provider_key":"alpaca_opra","feed":"opra",
         "realtime":True,"consolidated":True,"bid":10.01,"ask":10.11,
-        "quote_time":"2026-09-24T19:30:01+00:00"
+        "quote_time":datetime.now(timezone.utc).isoformat()
     })
     monkeypatch.setattr(market_app,"_snapshot_option_quote",lambda symbol:{
         "provider":"snapshot","provider_key":"snapshot","feed":"snapshot",
