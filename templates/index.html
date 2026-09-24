@@ -136,8 +136,9 @@ body{background:radial-gradient(circle at 50% -20%,#10203a 0,transparent 38%),va
 <section class="box table"><div class="controls"><div><div class="label">OPEN PAPER POSITIONS</div><div class="sub">Entry uses ask when available; exit/mark uses bid when available. This intentionally includes the quoted spread.</div></div><button class="btn" onclick="resetPaper()">Reset simulator</button></div>
 <table><thead><tr><th>Ticker</th><th>Contract</th><th>Opened</th><th>Entry</th><th>Current exit mark</th><th>P/L</th><th>Underlying</th><th>Underlying move</th><th>Entry context</th><th></th></tr></thead><tbody id="paperOpen"></tbody></table></section>
 <section class="box table"><div class="label">PENDING PAPER ORDERS</div><div class="sub">Limit orders fill when the simulated executable quote reaches your limit.</div><table><thead><tr><th>Ticker</th><th>Contract</th><th>Qty</th><th>Limit</th><th>Current ask</th><th>Status</th><th></th></tr></thead><tbody id="paperPending"></tbody></table></section>
+<section class="box" style="margin-top:12px"><div class="label">FORWARD PAPER EVIDENCE</div><div class="sub">Compares the evidence captured before each paper entry with the realized result. This is the validation record that matters most.</div><div class="statline" id="paperValidation" style="margin-top:10px"></div></section>
 <section class="box table"><div class="label">CLOSED PAPER POSITIONS</div>
-<table><thead><tr><th>Ticker</th><th>Contract</th><th>Entry</th><th>Exit</th><th>P/L</th><th>Opened</th><th>Closed</th></tr></thead><tbody id="paperClosed"></tbody></table></section>
+<table><thead><tr><th>Ticker</th><th>Contract</th><th>Entry</th><th>Exit</th><th>P/L</th><th>Realized return</th><th>Hist. mean at entry</th><th>Profit freq. at entry</th><th>Evidence</th><th>Opened</th><th>Closed</th></tr></thead><tbody id="paperClosed"></tbody></table></section>
 <section class="box" style="margin-top:12px"><div class="label">HISTORICAL REPLAY · UNDERLYING ONLY</div><div class="sub">Use this to inspect what happened after an earlier date without pretending we have historical option quotes. Exact option replay requires historical chain data from a dedicated provider.</div>
 <div class="controls" style="margin-top:10px"><select class="select" id="replayDate" onchange="replay()"></select><select class="select" id="replayH" onchange="replay()"><option value="5">5 days</option><option value="10">10 days</option><option value="20">20 days</option><option value="30">30 days</option></select></div>
 <div class="value" id="replayResult" style="font-size:20px">—</div><div class="sub" id="replayText">—</div></section>
@@ -663,6 +664,60 @@ function paperBuyingPower(s){
  (s.closed||[]).forEach(p=>cash+=Number(p.pnl||0));
  return cash;
 }
+
+function guidanceForContract(x){
+ if(!x||!C)return null;
+ const radar=((C.options||{}).opportunity_radar)||{},g=radar.guidance||{};
+ const rows=[g.best_overall,g.highest_upside,g.higher_probability,...(radar.opportunities||[]),...(radar.watchlist||[])].filter(Boolean);
+ return rows.find(r=>(x.contract_symbol&&r.contract_symbol===x.contract_symbol)||
+   (!x.contract_symbol&&r.type===x.type&&Number(r.strike)===Number(x.strike)&&r.expiration===x.expiration))||null;
+}
+function paperEvidenceSnapshot(x){
+ const g=guidanceForContract(x)||{},ci=g.prob_profit_ci95||[null,null];
+ return {
+   entry_combined_evidence_score:g.combined_evidence_score!=null?g.combined_evidence_score:g.score,
+   entry_historical_mean_return:g.expected_return_on_debit,
+   entry_historical_median_return:g.median_return_on_debit,
+   entry_profit_frequency:g.prob_profit,
+   entry_profit_frequency_ci95:ci,
+   entry_full_premium_loss_frequency:g.prob_total_premium_loss,
+   entry_historical_p10_pnl:g.p10_pnl_per_contract,
+   entry_historical_p90_pnl:g.p90_pnl_per_contract,
+   entry_risk_tier:g.risk_tier,
+   entry_evidence_confidence:g.evidence_confidence,
+   entry_execution_status:g.execution_status||(x.execution_realtime?'verified_live':'research_snapshot'),
+   entry_execution_verified:g.execution_verified_for_forward_test===true,
+   entry_market_data_provider:x.selected_quote_provider||x.provider||g.selected_quote_provider||null,
+   entry_market_data_confidence:x.data_confidence||g.data_confidence||null,
+   entry_provider_agreement_pct:x.provider_agreement_pct!=null?x.provider_agreement_pct:g.provider_agreement_pct,
+   entry_quote_age_seconds:x.quote_age_seconds!=null?x.quote_age_seconds:(x.quote_age_hours!=null?Number(x.quote_age_hours)*3600:null),
+   entry_regime:C.regime||null,
+   entry_days_to_earnings:(((C.company_context||{}).earnings||{}).days_to_earnings),
+   entry_guidance_explanation:g.guidance_explanation||[],
+   entry_guidance_risks:g.risks||[]
+ };
+}
+function renderPaperValidation(s){
+ const el=document.getElementById('paperValidation');if(!el)return;
+ const rows=(s.closed||[]).filter(p=>p.entry_historical_mean_return!=null||p.entry_profit_frequency!=null);
+ if(!rows.length){
+   el.innerHTML='<div class="empty">No evidence-tagged paper trades have closed yet. Future simulator entries will preserve the MarketLens evidence that existed before entry.</div>';return;
+ }
+ const realized=rows.map(p=>{const debit=Number(p.entry_price||0)*100*Number(p.qty||1);return debit>0?Number(p.pnl||0)/debit:null}).filter(x=>x!=null);
+ const expected=rows.map(p=>p.entry_historical_mean_return).filter(x=>x!=null).map(Number);
+ const probs=rows.map(p=>p.entry_profit_frequency).filter(x=>x!=null).map(Number);
+ const avg=a=>a.length?a.reduce((u,v)=>u+v,0)/a.length:null;
+ const wins=rows.filter(p=>Number(p.pnl||0)>0).length/rows.length;
+ const ar=avg(realized),ae=avg(expected),ap=avg(probs),gap=(ar!=null&&ae!=null)?ar-ae:null;
+ el.innerHTML=[
+   ['Evidence-tagged trades',rows.length],
+   ['Realized win rate',pc(wins)],
+   ['Avg predicted profit freq.',pc(ap)],
+   ['Avg realized return',pc(ar)],
+   ['Avg historical mean return',pc(ae)],
+   ['Realized − historical',pc(gap)]
+ ].map(([a,b])=>'<div class="stat"><div class="label">'+esc(a)+'</div><div style="margin-top:7px;font-weight:700">'+esc(b)+'</div></div>').join('');
+}
 function paperTrade(){
  if(!selectedContract||!C)return;
  const x=selectedContract,s=paperState(),qty=Math.max(1,Number(paperQty.value||1)),orderType=paperOrderType.value;
@@ -670,14 +725,28 @@ function paperTrade(){
  const limit=orderType==='limit'?Number(paperLimit.value||0):null;
  const price=orderType==='limit'?limit:market;
  if(!price||price<=0){runStatus.textContent='Enter a usable order price';return}
- const maxCost=price*100*qty,buying=paperBuyingPower(s);
+ const maxCost=price*100*qty,buying=paperBuyingPower(s),ev=paperEvidenceSnapshot(x);
  if(maxCost>buying){runStatus.textContent='Paper order exceeds buying power';return}
  pendingReview={id:Date.now(),ticker:C.ticker,type:x.type,strike:x.strike,expiration:x.expiration,contract_symbol:x.contract_symbol||'',qty,
   entry_spot:spotNow(),entry_iv:x.iv,entry_delta:x.delta,entry_theta:x.theta_per_contract_per_day,entry_vega:x.vega_per_contract_per_vol_point,
-  entry_spread_pct:x.spread_pct,entry_model_output:C.probability_5d_up,entry_evidence:(C.evidence||{}).state||null,order_type:orderType,
-  requested_price:price};
+  entry_spread_pct:x.spread_pct,entry_model_output:C.probability_5d_up,entry_model_auc:(C.evidence||{}).mean_roc_auc,
+  entry_evidence:(C.evidence||{}).state||null,entry_dte:x.dte,order_type:orderType,requested_price:price,...ev};
+ const ci=ev.entry_profit_frequency_ci95||[null,null],verified=ev.entry_execution_verified===true;
  orderTicket.style.display='block';
- orderTicket.innerHTML='<div class="label">REVIEW PAPER ORDER</div><div class="kv"><span>Contract</span><b>'+esc(C.ticker+' '+x.expiration+' '+x.strike+' '+String(x.type).toUpperCase())+'</b></div><div class="kv"><span>Quantity</span><b>'+qty+'</b></div><div class="kv"><span>Order</span><b>'+esc(orderType==='limit'?'Limit @ '+money(limit):'Market @ quoted ask')+'</b></div><div class="kv"><span>Estimated maximum debit</span><b>'+money(maxCost)+'</b></div><div class="kv"><span>Buying power after fill</span><b>'+money(buying-maxCost)+'</b></div><div style="margin-top:12px;display:flex;gap:8px"><button class="btn primary" onclick="submitPaperOrder()">Submit paper order</button><button class="btn" onclick="orderTicket.style.display=\'none\';pendingReview=null">Cancel</button></div>';
+ orderTicket.innerHTML='<div class="label">REVIEW PAPER ORDER · EVIDENCE CAPTURED BEFORE ENTRY</div>'+
+  '<div class="kv"><span>Contract</span><b>'+esc(C.ticker+' '+x.expiration+' '+x.strike+' '+String(x.type).toUpperCase())+'</b></div>'+
+  '<div class="kv"><span>Quantity</span><b>'+qty+'</b></div>'+
+  '<div class="kv"><span>Order</span><b>'+esc(orderType==='limit'?'Limit @ '+money(limit):'Market @ quoted ask')+'</b></div>'+
+  '<div class="kv"><span>Estimated maximum debit</span><b>'+money(maxCost)+'</b></div>'+
+  '<div class="kv"><span>All-data evidence</span><b>'+num(ev.entry_combined_evidence_score,1)+'/100</b></div>'+
+  '<div class="kv"><span>Historical mean return</span><b>'+pc(ev.entry_historical_mean_return)+'</b></div>'+
+  '<div class="kv"><span>Historical profit frequency</span><b>'+pc(ev.entry_profit_frequency)+(ci[0]!=null&&ci[1]!=null?' · 95% '+pc(ci[0])+'–'+pc(ci[1]):'')+'</b></div>'+
+  '<div class="kv"><span>Historical full-loss frequency</span><b>'+pc(ev.entry_full_premium_loss_frequency)+'</b></div>'+
+  '<div class="kv"><span>Execution data</span><b class="'+(verified?'good':'warn')+'">'+esc(verified?'Verified live':'Research/snapshot only')+'</b></div>'+
+  '<div class="kv"><span>Provider / confidence</span><b>'+esc((ev.entry_market_data_provider||'—')+' / '+(ev.entry_market_data_confidence||'unknown'))+'</b></div>'+
+  '<div class="kv"><span>Buying power after fill</span><b>'+money(buying-maxCost)+'</b></div>'+
+  '<div class="sub" style="margin-top:10px">This paper order preserves the pre-entry evidence so realized results can be compared with what MarketLens estimated at the time.</div>'+
+  '<div style="margin-top:12px;display:flex;gap:8px"><button class="btn primary" onclick="submitPaperOrder()">Submit paper order</button><button class="btn" onclick="orderTicket.style.display=\'none\';pendingReview=null">Cancel</button></div>';
 }
 function submitPaperOrder(){
  if(!pendingReview)return;
@@ -735,11 +804,12 @@ function renderPaper(){
  const s=paperState();const filled=processPending(s);if(filled)savePaper(s);let unreal=0,real=0,cash=10000;paperOpen.innerHTML='';paperClosed.innerHTML='';paperPending.innerHTML='';
  s.open.forEach(p=>{const q=lookupMark(p),cost=p.entry_price*100*p.qty;cash-=cost;const val=q.mark==null?null:q.mark*100*p.qty,pl=val==null?null:val-cost;if(pl!=null)unreal+=pl;paperOpen.innerHTML+='<tr><td>'+p.ticker+'</td><td>'+p.expiration+' '+money(p.strike)+' '+p.type+'</td><td>'+new Date(p.opened_at).toLocaleDateString()+'</td><td>'+money(p.entry_price)+'</td><td>'+money(q.mark)+'</td><td class="'+(pl==null?'':pl>=0?'good':'bad')+'">'+(pl==null?'—':((pl>=0?'+':'')+money(pl)))+'</td><td>'+money(q.spot)+'</td><td>'+((q.spot==null||p.entry_spot==null)?'—':pc(q.spot/p.entry_spot-1))+'</td><td>'+(p.entry_evidence?esc(p.entry_evidence):'—')+'</td><td><button class="btn" onclick="closePaper('+p.id+')">Close</button></td></tr>'});
  s.pending.forEach(p=>{const q=lookupContract(p);paperPending.innerHTML+='<tr><td>'+p.ticker+'</td><td>'+p.expiration+' '+money(p.strike)+' '+p.type+'</td><td>'+p.qty+'</td><td>'+money(p.limit_price)+'</td><td>'+money(q&&q.ask)+'</td><td class="warn">Pending</td><td><button class="btn" onclick="cancelPending('+p.id+')">Cancel</button></td></tr>'});if(!s.pending.length)paperPending.innerHTML='<tr><td colspan="7" class="empty">No pending orders.</td></tr>';
- s.closed.forEach(p=>{real+=p.pnl;cash+=p.pnl;paperClosed.innerHTML+='<tr><td>'+p.ticker+'</td><td>'+p.expiration+' '+money(p.strike)+' '+p.type+'</td><td>'+money(p.entry_price)+'</td><td>'+money(p.exit_price)+'</td><td class="'+(p.pnl>=0?'good':'bad')+'">'+(p.pnl>=0?'+':'')+money(p.pnl)+'</td><td>'+new Date(p.opened_at).toLocaleDateString()+'</td><td>'+new Date(p.closed_at).toLocaleDateString()+'</td></tr>'});
+ s.closed.forEach(p=>{real+=p.pnl;cash+=p.pnl;const debit=Number(p.entry_price||0)*100*Number(p.qty||1),rr=debit>0?Number(p.pnl||0)/debit:null;paperClosed.innerHTML+='<tr><td>'+p.ticker+'</td><td>'+p.expiration+' '+money(p.strike)+' '+p.type+'</td><td>'+money(p.entry_price)+'</td><td>'+money(p.exit_price)+'</td><td class="'+(p.pnl>=0?'good':'bad')+'">'+(p.pnl>=0?'+':'')+money(p.pnl)+'</td><td class="'+(rr==null?'':rr>=0?'good':'bad')+'">'+pc(rr)+'</td><td>'+pc(p.entry_historical_mean_return)+'</td><td>'+pc(p.entry_profit_frequency)+'</td><td>'+num(p.entry_combined_evidence_score,1)+'/100 · '+esc(p.entry_market_data_confidence||'legacy')+'</td><td>'+new Date(p.opened_at).toLocaleDateString()+'</td><td>'+new Date(p.closed_at).toLocaleDateString()+'</td></tr>'});
  const openVal=s.open.reduce((a,p)=>{const q=lookupMark(p);return a+(q.mark==null?0:q.mark*100*p.qty)},0),equity=cash+openVal;
  paperEquity.textContent=money(equity);paperBuying.textContent=money(cash);paperOptionValue.textContent=money(openVal);paperCount.textContent=s.open.length;paperUnreal.textContent=(unreal>=0?'+':'')+money(unreal);paperReal.textContent=(real>=0?'+':'')+money(real);paperUnreal.className='value '+(unreal>=0?'good':'bad');paperReal.className='value '+(real>=0?'good':'bad');
  if(!s.open.length)paperOpen.innerHTML='<tr><td colspan="10" class="empty">No open paper positions. Analyze a contract and choose Paper trade.</td></tr>';
- if(!s.closed.length)paperClosed.innerHTML='<tr><td colspan="7" class="empty">No closed paper positions yet.</td></tr>';
+ if(!s.closed.length)paperClosed.innerHTML='<tr><td colspan="11" class="empty">No closed paper positions yet.</td></tr>';
+ renderPaperValidation(s);
  s.equityHistory.push({t:new Date().toISOString(),equity});if(s.equityHistory.length>300)s.equityHistory=s.equityHistory.slice(-300);savePaper(s);
 }
 function closePaper(id){
