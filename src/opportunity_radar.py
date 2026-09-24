@@ -63,7 +63,7 @@ def _historical_outcomes(contract, spot, entry, returns, overlap_horizon=1):
         "prob_loss_ge_50pct":_f(np.mean(ret<=-.50)),
     }
 
-def _guidance_payload(rows, evidence, current_regime=None, context=None, relative_strength=None, model_probability=None):
+def _guidance_payload(rows, evidence, current_regime=None, context=None, relative_strength=None, model_probability=None, options_summary=None):
     """Build neutral decision-support lenses from already-screened contracts."""
     eligible=[r for r in rows if r.get("state")=="investigate"]
     if not eligible:
@@ -92,6 +92,8 @@ def _guidance_payload(rows, evidence, current_regime=None, context=None, relativ
     days_to_earnings=earnings.get("days_to_earnings")
     catalyst_flags=list(ctx.get("catalyst_flags") or [])
     rel20=(relative_strength or {}).get("vs_spy_20d")
+    implied_moves=((options_summary or {}).get("implied_moves_by_expiration") or {})
+    historical_earnings_move=earnings.get("avg_abs_1d_move")
 
     # User-facing guidance is stricter than the raw research screen: avoid
     # presenting ultra-short contracts as the default "best" choice.
@@ -156,6 +158,22 @@ def _guidance_payload(rows, evidence, current_regime=None, context=None, relativ
         if days_to_earnings is not None and dte is not None and 0<=int(days_to_earnings)<=int(dte):
             event_points=-2.5 if int(days_to_earnings)<=7 else -1.0
             event_notes.append(f"Earnings falls inside this contract's life ({int(days_to_earnings)} days)")
+            exp_move=((implied_moves.get(str(q.get("expiration"))) or {}).get("move"))
+            if historical_earnings_move is not None and exp_move is not None and float(historical_earnings_move)>0:
+                earnings_move_ratio=float(exp_move)/float(historical_earnings_move)
+                if earnings_move_ratio>=1.25:
+                    event_points-=2.0
+                    event_notes.append(f"Expiration implied move {float(exp_move)*100:.1f}% is above the historical average earnings move {float(historical_earnings_move)*100:.1f}%")
+                elif earnings_move_ratio<=.80:
+                    event_points+=0.5
+                    event_notes.append(f"Expiration implied move {float(exp_move)*100:.1f}% is below the historical average earnings move {float(historical_earnings_move)*100:.1f}%")
+                else:
+                    event_notes.append(f"Expiration implied move {float(exp_move)*100:.1f}% is near the historical average earnings move {float(historical_earnings_move)*100:.1f}%")
+            else:
+                earnings_move_ratio=None
+        else:
+            exp_move=None
+            earnings_move_ratio=None
         if catalyst_flags:
             event_notes.append("Current catalyst themes: "+", ".join(map(str,catalyst_flags[:4])))
         combined += event_points
@@ -240,6 +258,9 @@ def _guidance_payload(rows, evidence, current_regime=None, context=None, relativ
             "regime":current_regime,
             "relative_strength_vs_spy_20d":_f(rel20),
             "days_to_earnings":days_to_earnings,
+            "historical_avg_abs_earnings_move":_f(historical_earnings_move),
+            "expiration_implied_move":_f(exp_move),
+            "earnings_implied_vs_historical_ratio":_f(earnings_move_ratio),
             "catalyst_flags":catalyst_flags[:6],
         }
         q["guidance_explanation"]=[
@@ -275,7 +296,7 @@ def _guidance_payload(rows, evidence, current_regime=None, context=None, relativ
     }
 
 
-def build_opportunity_radar(raw, contracts, regime_series, current_regime, evidence, spot, limit=12, learning=None, context=None, relative_strength=None, model_probability=None):
+def build_opportunity_radar(raw, contracts, regime_series, current_regime, evidence, spot, limit=12, learning=None, context=None, relative_strength=None, model_probability=None, options_summary=None):
     """Historical contract screen.
 
     Replays today's strike/premium economics across historical underlying moves.
@@ -401,7 +422,7 @@ def build_opportunity_radar(raw, contracts, regime_series, current_regime, evide
     rows.sort(key=lambda x:(x["state"]=="investigate",x["score"],x.get("expected_pnl_per_contract") or -1e9),reverse=True)
     surfaced=[x for x in rows if x["state"]=="investigate"][:limit]
     watch=[x for x in rows if x["state"]=="watch"][:limit]
-    guidance=_guidance_payload(rows,evidence,current_regime=current_regime,context=context,relative_strength=relative_strength,model_probability=model_probability)
+    guidance=_guidance_payload(rows,evidence,current_regime=current_regime,context=context,relative_strength=relative_strength,model_probability=model_probability,options_summary=options_summary)
     return {
         "state":"opportunities_detected" if surfaced else "no_strong_setup",
         "opportunities":surfaced,
