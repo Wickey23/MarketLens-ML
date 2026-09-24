@@ -99,3 +99,24 @@ def test_guidance_uses_validated_direction_and_context():
     assert call["all_data_components"]["context_alignment_points"] > 0
     assert call["all_data_components"]["event_risk_points"] < 0
     assert any("Earnings falls inside" in x for x in call["risks"])
+
+
+def test_guidance_prefers_three_plus_dte_for_default_choices():
+    base={
+        "state":"investigate","score":90.0,"entry_quote":2.0,
+        "prob_profit":0.64,"prob_profit_ci95":[0.59,0.69],
+        "prob_total_premium_loss":0.20,"expected_return_on_debit":0.30,
+        "median_return_on_debit":0.12,"p10_pnl_per_contract":-80.0,
+        "samples":250,"theta_cost_pct_per_day":0.02,"spread_pct":0.05,
+        "risks":[],"reasons":[],
+    }
+    rows=[
+        {**base,"contract_symbol":"TWO","type":"call","dte":2,"score":99.0,"expected_return_on_debit":0.80},
+        {**base,"contract_symbol":"SEVEN","type":"call","dte":7,"score":86.0,"expected_return_on_debit":0.35},
+    ]
+    g=_guidance_payload(rows,{"mean_roc_auc":0.56,"historical_lift_ci95":[0.01,0.05]})
+    assert g["best_overall"]["contract_symbol"]=="SEVEN"
+    assert g["highest_upside"]["contract_symbol"]=="SEVEN"
+    assert g["best_overall"]["risk_tier"] in ("moderate","lower_relative_risk","aggressive")
+    assert g["best_overall"]["evidence_confidence"] in ("higher","moderate","limited")
+    assert g["best_overall"]["simulator_priority"] is True
