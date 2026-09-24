@@ -200,6 +200,14 @@
       "equity": 10015.0,
       "cash": 10015.0,
       "open_value": 0
+    },
+    {
+      "at": "2026-09-24T18:07:59.387280+00:00",
+      "equity": 10015.0,
+      "cash": 10015.0,
+      "open_value": 0,
+      "strategy_version": "v3_realtime_session",
+      "market_session_open": true
     }
   ],
   "decisions": [
@@ -392,6 +400,8 @@
       "strategy_version": "v2_conservative"
     }
   ],
-  "updated_at": "2026-09-24T17:49:53.295675+00:00",
-  "last_processed_snapshot": "2026-09-24T17:49:53.295464+00:00"
+  "updated_at": "2026-09-24T18:07:59.387280+00:00",
+  "last_processed_snapshot": "2026-09-24T18:07:59.387019+00:00",
+  "strategy_version": "v3_realtime_session",
+  "paper_market_session_open": true
 }
