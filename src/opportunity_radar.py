@@ -20,7 +20,7 @@ def _wilson(k,n,z=1.96):
     half=z*math.sqrt((p*(1-p)+z*z/(4*n))/n)/d
     return [_f(center-half),_f(center+half)]
 
-def _historical_outcomes(contract, spot, entry, returns):
+def _historical_outcomes(contract, spot, entry, returns, overlap_horizon=1):
     if entry <= 0 or returns.empty:
         return {}
     terminal=spot*(1.0+returns.to_numpy(dtype=float))
@@ -33,10 +33,15 @@ def _historical_outcomes(contract, spot, entry, returns):
     ret=(intrinsic-entry)/entry
     n=int(len(pnl))
     wins=int(np.sum(pnl>0))
+    prob=wins/n
+    # h-day forward returns overlap when sampled daily. Use a conservative
+    # overlap-adjusted effective count for uncertainty and qualification gates.
+    effective_n=max(1,int(n/max(1,int(overlap_horizon))))
     return {
         "samples":n,
-        "prob_profit":_f(wins/n),
-        "prob_profit_ci95":_wilson(wins,n),
+        "effective_samples":effective_n,
+        "prob_profit":_f(prob),
+        "prob_profit_ci95":_wilson(prob*effective_n,effective_n),
         "prob_total_premium_loss":_f(np.mean(intrinsic<=0)),
         "expected_pnl_per_contract":_f(np.mean(pnl)),
         "median_pnl_per_contract":_f(np.median(pnl)),
@@ -156,15 +161,16 @@ def _guidance_payload(rows, evidence, current_regime=None, context=None, relativ
         else:
             q["risk_tier"]="lower_relative_risk"
         ci_width=(float(ci[1])-float(ci[0])) if ci[0] is not None and ci[1] is not None else None
-        if q.get("samples",0)>=300 and ci_width is not None and ci_width<=.10:
+        effective_n=int(q.get("effective_samples") or 0)
+        if effective_n>=300 and ci_width is not None and ci_width<=.10:
             q["evidence_confidence"]="higher"
-        elif q.get("samples",0)>=150 and ci_width is not None and ci_width<=.16:
+        elif effective_n>=150 and ci_width is not None and ci_width<=.16:
             q["evidence_confidence"]="moderate"
         else:
             q["evidence_confidence"]="limited"
         q["simulator_priority"]=bool(
             dte_i>=3 and q["combined_evidence_score"]>=72 and p>=.58 and ev>0
-            and q.get("samples",0)>=100
+            and effective_n>=60
         )
         q["historical_downside_return_p10"]=_f(downside_return(q))
         q["reward_to_p10_downside"]=_f(rr)
@@ -172,6 +178,8 @@ def _guidance_payload(rows, evidence, current_regime=None, context=None, relativ
             "contract_quality_score":_f(q.get("score")),
             "historical_profit_frequency":_f(q.get("prob_profit")),
             "historical_profit_frequency_ci95":q.get("prob_profit_ci95"),
+            "historical_raw_samples":q.get("samples"),
+            "historical_overlap_adjusted_samples":q.get("effective_samples"),
             "historical_mean_return_on_debit":_f(q.get("expected_return_on_debit")),
             "historical_median_return_on_debit":_f(q.get("median_return_on_debit")),
             "historical_p10_return_on_debit":_f(downside_return(q)),
@@ -236,7 +244,7 @@ def build_opportunity_radar(raw, contracts, regime_series, current_regime, evide
         frame=pd.DataFrame({"r":fwd,"regime":regime_series}).dropna()
         same=frame.loc[frame["regime"]==current_regime,"r"]
         sample=same if len(same)>=80 else frame["r"]
-        stats=_historical_outcomes(c,float(spot),float(entry),sample)
+        stats=_historical_outcomes(c,float(spot),float(entry),sample,overlap_horizon=h)
         if not stats:
             continue
 
@@ -260,7 +268,7 @@ def build_opportunity_radar(raw, contracts, regime_series, current_regime, evide
         if theta is not None:
             score += 6 if theta<=.01 else (-8 if theta>.03 else 0)
         score += 5 if (oi>=500 or vol>=100) else (2 if (oi>=100 or vol>=20) else -4)
-        if stats["samples"]<100:
+        if stats.get("effective_samples",0)<60:
             score-=8
         base_score=max(0,min(100,score))
         learned_multiplier=1.0
@@ -298,7 +306,7 @@ def build_opportunity_radar(raw, contracts, regime_series, current_regime, evide
         if theta is not None and theta>.025: risks.append("Daily theta is high relative to premium")
         if spread is not None and spread>.20: risks.append("Wide spread can materially reduce realized returns")
         if loss>=.50: risks.append(f"Historical replay lost the full premium about {loss*100:.0f}% of the time")
-        if stats["samples"]<100: risks.append("Historical sample is limited")
+        if stats.get("effective_samples",0)<60: risks.append("Overlap-adjusted historical sample is limited")
         dte=c.get("dte")
         iv=c.get("iv")
         bid=c.get("bid")
@@ -314,7 +322,7 @@ def build_opportunity_radar(raw, contracts, regime_series, current_regime, evide
                            or (theta is not None and theta>.05)
                            or (iv is not None and (float(iv)<.03 or float(iv)>5.0))
                            or bid is None or ask is None or float(bid)<=0 or float(ask)<=0 or float(ask)<float(bid))
-        if not hard_quality_gate and score>=72 and pp>=.58 and ev is not None and ev>0 and stats["samples"]>=100:
+        if not hard_quality_gate and score>=72 and pp>=.58 and ev is not None and ev>0 and stats.get("effective_samples",0)>=60:
             state="investigate"
         elif score<55 or ev is None or ev<=0:
             state="pass"
@@ -343,5 +351,5 @@ def build_opportunity_radar(raw, contracts, regime_series, current_regime, evide
         "guidance":guidance,
         "contracts_evaluated":len(rows),
         "learning_enabled":bool((learning or {}).get("enabled")),
-        "method_note":"Today's contract economics replayed across historical underlying moves. Results are hypothetical, exclude changing historical IV/Greeks and are not a profitability guarantee.",
+        "method_note":"Today's contract economics replayed across historical underlying moves. Profit-frequency uncertainty and qualification use an overlap-adjusted effective sample count because multi-day forward returns overlap. Results are hypothetical, exclude changing historical IV/Greeks and are not a profitability guarantee.",
     }
