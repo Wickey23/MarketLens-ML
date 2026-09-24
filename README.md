@@ -59,7 +59,7 @@ Directional models currently include Logistic Regression and Random Forest.
 - Similar-signal lift uncertainty uses paired moving-block bootstrap resampling, rather than subtracting a fixed base rate from a subset-only interval.
 - Model outputs are not presented as guaranteed or perfectly calibrated real-world probabilities.
 
-Historical option payoff replay applies today's strike and executable long-entry premium to historical underlying moves. It does **not** reconstruct historical option IV/Greeks paths and does not prove a durable edge. The forward paper record is the primary evidence for the actual strategy.
+Historical option payoff replay applies today's strike and executable long-entry premium to historical underlying moves. Because multi-day forward returns overlap, MarketLens reports an overlap-adjusted effective sample size and uses it for replay uncertainty/qualification instead of treating every daily row as independent. The replay does **not** reconstruct historical option IV/Greeks paths and does not prove a durable edge. The forward paper record is the primary evidence for the actual strategy.
 
 ## Autonomous paper strategy
 
@@ -108,9 +108,9 @@ Production/environment variables:
 - `TRADIER_ACCESS_TOKEN` — Tradier production token for market data
 - `GITHUB_ACTIONS_TOKEN` — server-side token used only to dispatch the lightweight refresh workflow
 - `FINNHUB_API_KEY` — optional underlying-quote fallback
-- `MARKETLENS_CONTROL_KEY` — optional app control key protecting refresh and streaming-session endpoints
+- `MARKETLENS_CONTROL_KEY` — app control key protecting refresh and streaming-session endpoints
 
-When `MARKETLENS_CONTROL_KEY` is configured, the browser requests it only for the current session and stores it in `sessionStorage`; it is sent only to MarketLens control endpoints.
+Control endpoints fail closed once their server-side capability token is present: Tradier streaming will not expose a session endpoint unless `MARKETLENS_CONTROL_KEY` is also configured, and the GitHub refresh trigger follows the same rule. The browser requests the key only for the current session and stores it in `sessionStorage`; it is sent only to MarketLens control endpoints.
 
 The refresh endpoint also checks GitHub's workflow history for a cross-instance cooldown so multiple Vercel instances cannot bypass the in-memory limiter.
 
