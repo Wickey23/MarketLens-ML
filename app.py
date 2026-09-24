@@ -230,7 +230,8 @@ def _finnhub_live_quote(ticker, api_key):
 
 
 def _alpaca_live_quote(ticker,key,secret):
-    feed=(os.getenv("ALPACA_STOCK_FEED") or "iex").strip().lower()
+    default_feed="sip" if (os.getenv("ALPACA_OPTIONS_FEED") or "").strip().lower()=="opra" else "iex"
+    feed=(os.getenv("ALPACA_STOCK_FEED") or default_feed).strip().lower()
     if feed not in ("sip","iex","delayed_sip"):
         feed="iex"
     symbol=urllib.parse.quote(ticker,safe="")
@@ -274,7 +275,7 @@ def _alpaca_live_quote(ticker,key,secret):
         "market_timestamp":ts,
         "exchange":None,"currency":"USD",
         "provider":"Alpaca Market Data",
-        "provider_key":"alpaca_sip" if consolidated else ("yahoo" if delayed else "alpaca_iex"),
+        "provider_key":"alpaca_sip" if consolidated else ("alpaca_delayed" if delayed else "alpaca_iex"),
         "feed":feed,
         "consolidated":consolidated,
         "realtime":not delayed,
