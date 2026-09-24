@@ -155,7 +155,7 @@ body{background:radial-gradient(circle at 50% -20%,#10203a 0,transparent 38%),va
 </main>
 
 <script>
-let liveQuoteTimer=null,dataSyncTimer=null,marketStreamSocket=null,marketStreamSession=null,marketStreamConnected=false,marketStreamReconnect=null,streamRenderTimer=null;
+let liveQuoteTimer=null,liveOptionTimer=null,dataSyncTimer=null,marketStreamSocket=null,marketStreamSession=null,marketStreamConnected=false,marketStreamReconnect=null,streamRenderTimer=null;
 let controlKey=sessionStorage.getItem('marketlens_control_key')||'';
 async function controlledFetch(url,options={}){
   const run=async()=>{
@@ -206,7 +206,47 @@ async function refreshLiveQuote(){
 function startLiveQuotePolling(){
   if(liveQuoteTimer)clearInterval(liveQuoteTimer);
   refreshLiveQuote();
-  liveQuoteTimer=setInterval(refreshLiveQuote,15000);
+  liveQuoteTimer=setInterval(refreshLiveQuote,5000);
+}
+async function refreshSelectedOptionQuote(){
+  if(!selectedContract||!selectedContract.contract_symbol||document.hidden)return;
+  const symbol=selectedContract.contract_symbol;
+  try{
+    const r=await fetch('/api/live-option-quote?symbol='+encodeURIComponent(symbol),{cache:'no-store'});
+    const q=await r.json();
+    if(!r.ok||!q.ok||!selectedContract||selectedContract.contract_symbol!==symbol)return;
+    if(q.bid!=null)selectedContract.bid=Number(q.bid);
+    if(q.ask!=null)selectedContract.ask=Number(q.ask);
+    if(q.last!=null)selectedContract.last=Number(q.last);
+    if(Number.isFinite(selectedContract.bid)&&Number.isFinite(selectedContract.ask)&&selectedContract.ask>=selectedContract.bid){
+      selectedContract.mid=(selectedContract.bid+selectedContract.ask)/2;
+      selectedContract.spread_pct=selectedContract.mid>0?(selectedContract.ask-selectedContract.bid)/selectedContract.mid:null;
+      const entry=selectedContract.ask>0?selectedContract.ask:selectedContract.mid,spot=spotNow();
+      if(entry>0){
+        selectedContract.entry_debit_per_contract=entry*100;
+        selectedContract.max_loss_per_contract=entry*100;
+        selectedContract.breakeven=selectedContract.type==='call'?Number(selectedContract.strike)+entry:Number(selectedContract.strike)-entry;
+        selectedContract.breakeven_move=(spot&&spot>0)?selectedContract.breakeven/spot-1:null;
+        if(selectedContract.theta_per_contract_per_day!=null)selectedContract.theta_cost_pct_per_day=Math.abs(Number(selectedContract.theta_per_contract_per_day))/(entry*100);
+      }
+    }
+    selectedContract.quote_age_hours=q.quote_age_hours;
+    selectedContract.selected_quote_provider=q.provider;
+    selectedContract.selected_quote_provider_key=q.provider_key;
+    selectedContract.selected_quote_feed=q.feed;
+    selectedContract.data_confidence=q.data_confidence;
+    selectedContract.provider_agreement_pct=q.provider_agreement_pct;
+    selectedContract.provider_candidates=q.provider_candidates||[];
+    selectedContract.execution_realtime=!!q.execution_realtime;
+    selectedContract.live_quote=true;
+    renderChain();refreshSelectedContractLiveStats();renderReturnOutlook();
+  }catch(e){}
+}
+function startLiveOptionPolling(){
+  if(liveOptionTimer)clearInterval(liveOptionTimer);
+  if(!selectedContract||!selectedContract.contract_symbol)return;
+  refreshSelectedOptionQuote();
+  liveOptionTimer=setInterval(refreshSelectedOptionQuote,5000);
 }
 async function marketStreamSymbols(){
   if(!C)return[];
@@ -263,6 +303,11 @@ function applyMarketStreamEvent(e){
     }
     x.quote_age_hours=0;
     x.live_quote=true;
+    x.selected_quote_provider='Tradier streaming';
+    x.selected_quote_provider_key='tradier';
+    x.selected_quote_feed='consolidated';
+    x.data_confidence=x.data_confidence==='high'?'high':'medium';
+    x.execution_realtime=true;
   }else if(e.type==='trade'||e.type==='tradex'||e.type==='timesale'){
     const last=Number(e.last!=null?e.last:e.price);
     if(Number.isFinite(last)&&last>0)x.last=last;
@@ -413,7 +458,7 @@ async function load(){
   }
 }
 function sel(t,b){
-  C=P.tickers.find(x=>x.ticker===t);selectedContract=null;contractPanel.classList.remove('active');
+  C=P.tickers.find(x=>x.ticker===t);selectedContract=null;if(liveOptionTimer){clearInterval(liveOptionTimer);liveOptionTimer=null}contractPanel.classList.remove('active');
   document.querySelectorAll('.tickerTabs .tab').forEach(x=>x.classList.remove('active'));if(b)b.classList.add('active');
   tickerInput.value=t;renderResearch();renderOptions();renderPaper();renderReplay();renderAI();startLiveQuotePolling();updateMarketStreamSymbols();
 }
@@ -567,7 +612,7 @@ function selectContractFromButton(btn){const tr=btn.closest("tr");if(!tr)return;
 function selectContract(sym,strike,type,exp){
   const rows=(((C.options||{}).chain||{}).contracts||[]);
   selectedContract=rows.find(x=>(sym&&x.contract_symbol===sym)||(!sym&&x.strike===strike&&x.type===type&&x.expiration===exp));
-  if(!selectedContract)return;contractPanel.classList.add('active');
+  if(!selectedContract)return;contractPanel.classList.add('active');startLiveOptionPolling();
   const x=selectedContract;contractTitle.textContent=C.ticker+' '+x.expiration+' '+money(x.strike)+' '+x.type.toUpperCase();
   contractStats.innerHTML=[
     ['Bid',money(x.bid)],['Ask',money(x.ask)],['Premium mid',money(x.mid)],['Breakeven',money(x.breakeven)],['IV',pc(x.iv)],
