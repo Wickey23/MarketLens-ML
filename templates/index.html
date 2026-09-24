@@ -766,14 +766,34 @@ function renderPaperValidation(s){
  const avg=a=>a.length?a.reduce((u,v)=>u+v,0)/a.length:null;
  const wins=rows.filter(p=>Number(p.pnl||0)>0).length/rows.length;
  const ar=avg(realized),ae=avg(expected),ap=avg(probs),gap=(ar!=null&&ae!=null)?ar-ae:null;
- el.innerHTML=[
-   ['Evidence-tagged trades',rows.length],
-   ['Realized win rate',pc(wins)],
-   ['Avg predicted profit freq.',pc(ap)],
-   ['Avg realized return',pc(ar)],
-   ['Avg historical mean return',pc(ae)],
-   ['Realized − historical',pc(gap)]
- ].map(([a,b])=>'<div class="stat"><div class="label">'+esc(a)+'</div><div style="margin-top:7px;font-weight:700">'+esc(b)+'</div></div>').join('');
+ const total=rows.reduce((u,p)=>u+Number(p.pnl||0),0),tickers=new Set(rows.map(p=>p.ticker)).size;
+ const winningPnls=rows.map(p=>Number(p.pnl||0)).filter(x=>x>0),winnerSum=winningPnls.reduce((u,v)=>u+v,0),largest=winningPnls.length?Math.max(...winningPnls):0;
+ const concentration=winnerSum>0?largest/winnerSum:null;
+ const opened=rows.map(p=>new Date(p.opened_at).getTime()).filter(Number.isFinite),closed=rows.map(p=>new Date(p.closed_at).getTime()).filter(Number.isFinite);
+ const days=(opened.length&&closed.length)?Math.max(0,(Math.max(...closed)-Math.min(...opened))/86400000):0;
+ let peak=10000,maxDd=0;(s.equityHistory||[]).forEach(x=>{const eq=Number(x.equity);if(!Number.isFinite(eq))return;peak=Math.max(peak,eq);if(peak>0)maxDd=Math.min(maxDd,eq/peak-1)});
+ const checks=[
+   ['Sample',rows.length>=30,rows.length+'/30 trades'],
+   ['Observation span',days>=21,days.toFixed(1)+'/21 days'],
+   ['Net P/L',total>0,(total>=0?'+':'')+money(total)],
+   ['Average return',ar!=null&&ar>0,pc(ar)],
+   ['Drawdown',Math.abs(maxDd)<=.15,pc(maxDd)],
+   ['Ticker breadth',rows.length>=15&&tickers>=3,tickers+' tickers'],
+   ['Winner concentration',rows.length>=10&&concentration!=null&&concentration<=.50,concentration==null?'—':pc(concentration)]
+ ];
+ const ready=checks.every(x=>x[1]),enough=rows.length>=30&&days>=21;
+ const state=!enough?'COLLECTING FORWARD DATA':ready?'PAPER RESULTS READY FOR REVIEW':'PAPER RESULTS NOT READY';
+ const stateClass=ready?'good':enough?'bad':'warn';
+ el.innerHTML='<div style="width:100%;margin-bottom:10px"><b class="'+stateClass+'">'+state+'</b><div class="sub">Manual simulator readiness is evidence tracking, not a guarantee of future profitability.</div></div>'+
+   [
+    ['Evidence-tagged trades',rows.length],
+    ['Realized win rate',pc(wins)],
+    ['Avg predicted profit freq.',pc(ap)],
+    ['Avg realized return',pc(ar)],
+    ['Avg historical mean return',pc(ae)],
+    ['Realized − historical',pc(gap)]
+   ].map(([a,b])=>'<div class="stat"><div class="label">'+esc(a)+'</div><div style="margin-top:7px;font-weight:700">'+esc(b)+'</div></div>').join('')+
+   '<div style="width:100%;margin-top:10px" class="readinessChecks">'+checks.map(([name,ok,detail])=>'<div class="readyCheck"><div class="label">'+esc(name)+'</div><b class="'+(ok?'good':'warn')+'">'+(ok?'PASS':'WAIT')+'</b><div class="sub">'+esc(detail)+'</div></div>').join('')+'</div>';
 }
 function paperTrade(){
  if(!selectedContract||!C)return;
