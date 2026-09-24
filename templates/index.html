@@ -532,7 +532,8 @@ function renderReturnOutlook(){
     const score=x.combined_evidence_score!=null?x.combined_evidence_score:x.score;
     return '<div class="outlookCard">'+
       '<span class="lensTag">'+esc(lens)+'</span><h3>'+esc(C.ticker)+' '+esc(x.expiration)+' '+money(x.strike)+' '+esc(String(x.type||'').toUpperCase())+'</h3>'+
-      '<div class="outlookMetric">'+pc(x.expected_return_on_debit)+'</div><div class="sub">Historical mean return on debit · not a forecast</div>'+
+      '<div class="outlookMetric">'+pc(x.trimmed_mean_return_on_debit!=null?x.trimmed_mean_return_on_debit:x.expected_return_on_debit)+'</div><div class="sub">Robust historical mean return on debit · not a forecast</div>'+
+      '<div class="kv"><span>Raw mean return</span><b>'+pc(x.expected_return_on_debit)+'</b></div>'+
       '<div class="kv"><span>Combined evidence</span><b>'+num(score,1)+'/100</b></div>'+
       '<div class="kv"><span>Snapshot ask / debit</span><b>'+money(x.ask!=null?x.ask:x.entry_quote)+' / '+money(Number(x.ask!=null?x.ask:x.entry_quote||0)*100)+'</b></div>'+
       '<div class="kv"><span>Profit frequency</span><b>'+pc(x.prob_profit)+'</b></div>'+
@@ -542,6 +543,10 @@ function renderReturnOutlook(){
       '<div class="kv"><span>10th–90th P/L</span><b>'+band+'</b></div>'+
       '<div class="kv"><span>10th–90th return</span><b>'+retBand+'</b></div>'+
       '<div class="kv"><span>Full-premium-loss frequency</span><b>'+pc(x.prob_total_premium_loss)+'</b></div>'+
+      '<div class="kv"><span>50%+ return frequency</span><b>'+pc(x.prob_return_ge_50pct)+'</b></div>'+
+      '<div class="kv"><span>100%+ return frequency</span><b>'+pc(x.prob_return_ge_100pct)+'</b></div>'+
+      '<div class="kv"><span>50%+ loss frequency</span><b>'+pc(x.prob_loss_ge_50pct)+'</b></div>'+
+      '<div class="kv"><span>Worst-10% average P/L</span><b>'+money(x.expected_shortfall_10_pnl)+'</b></div>'+
       '<div class="kv"><span>Spread / theta per day</span><b>'+pc(x.spread_pct)+' / '+pc(x.theta_cost_pct_per_day)+'</b></div>'+
       '<div class="kv"><span>IV / realized vol</span><b>'+((x.iv_rv_ratio==null)?'—':num(x.iv_rv_ratio,2)+'×')+'</b></div>'+
       '<div class="kv"><span>OI / volume</span><b>'+Number(x.open_interest||0).toLocaleString()+' / '+Number(x.volume||0).toLocaleString()+'</b></div>'+
@@ -592,9 +597,9 @@ function renderMarketWideOptions(){
     leaders.innerHTML=leaderRows.length?leaderRows.map(([lens,x,why])=>{
       const ci=x.prob_profit_ci95||[null,null],live=x.execution_status==='verified_live',conflict=x.execution_status==='conflict';
       return '<div class="outlookCard"><span class="lensTag">'+esc(lens)+'</span><h3>'+esc(x.ticker)+' '+esc(x.expiration)+' '+money(x.strike)+' '+esc(String(x.type||'').toUpperCase())+'</h3>'+
-        '<div class="outlookMetric">'+(lens==='Strongest overall'?num(x.combined_evidence_score!=null?x.combined_evidence_score:x.score,1)+'/100':lens==='Highest historical upside'?pc(x.expected_return_on_debit):pc(x.prob_profit))+'</div>'+
+        '<div class="outlookMetric">'+(lens==='Strongest overall'?num(x.combined_evidence_score!=null?x.combined_evidence_score:x.score,1)+'/100':lens==='Highest historical upside'?pc(x.trimmed_mean_return_on_debit!=null?x.trimmed_mean_return_on_debit:x.expected_return_on_debit):pc(x.prob_profit))+'</div>'+
         '<div class="sub">'+esc(why)+'</div>'+
-        '<div class="kv"><span>Historical mean return</span><b>'+pc(x.expected_return_on_debit)+'</b></div>'+
+        '<div class="kv"><span>Robust historical mean return</span><b>'+pc(x.trimmed_mean_return_on_debit!=null?x.trimmed_mean_return_on_debit:x.expected_return_on_debit)+'</b></div>'+
         '<div class="kv"><span>Profit frequency</span><b>'+pc(x.prob_profit)+'</b></div>'+
         '<div class="kv"><span>95% interval</span><b>'+((ci[0]==null||ci[1]==null)?'—':pc(ci[0])+'–'+pc(ci[1]))+'</b></div>'+
         '<div class="kv"><span>Risk tier</span><b>'+esc((x.risk_tier||'—').replaceAll('_',' '))+'</b></div>'+
@@ -734,6 +739,7 @@ function paperEvidenceSnapshot(x){
  return {
    entry_combined_evidence_score:g.combined_evidence_score!=null?g.combined_evidence_score:g.score,
    entry_historical_mean_return:g.expected_return_on_debit,
+   entry_historical_trimmed_mean_return:g.trimmed_mean_return_on_debit,
    entry_historical_median_return:g.median_return_on_debit,
    entry_profit_frequency:g.prob_profit,
    entry_profit_frequency_ci95:ci,
@@ -761,7 +767,7 @@ function renderPaperValidation(s){
    el.innerHTML='<div class="empty">No evidence-tagged paper trades have closed yet. Future simulator entries will preserve the MarketLens evidence that existed before entry.</div>';return;
  }
  const realized=rows.map(p=>{const debit=Number(p.entry_price||0)*100*Number(p.qty||1);return debit>0?Number(p.pnl||0)/debit:null}).filter(x=>x!=null);
- const expected=rows.map(p=>p.entry_historical_mean_return).filter(x=>x!=null).map(Number);
+ const expected=rows.map(p=>p.entry_historical_trimmed_mean_return!=null?p.entry_historical_trimmed_mean_return:p.entry_historical_mean_return).filter(x=>x!=null).map(Number);
  const probs=rows.map(p=>p.entry_profit_frequency).filter(x=>x!=null).map(Number);
  const avg=a=>a.length?a.reduce((u,v)=>u+v,0)/a.length:null;
  const wins=rows.filter(p=>Number(p.pnl||0)>0).length/rows.length;
@@ -790,7 +796,7 @@ function renderPaperValidation(s){
     ['Realized win rate',pc(wins)],
     ['Avg predicted profit freq.',pc(ap)],
     ['Avg realized return',pc(ar)],
-    ['Avg historical mean return',pc(ae)],
+    ['Avg robust historical return',pc(ae)],
     ['Realized − historical',pc(gap)]
    ].map(([a,b])=>'<div class="stat"><div class="label">'+esc(a)+'</div><div style="margin-top:7px;font-weight:700">'+esc(b)+'</div></div>').join('')+
    '<div style="width:100%;margin-top:10px" class="readinessChecks">'+checks.map(([name,ok,detail])=>'<div class="readyCheck"><div class="label">'+esc(name)+'</div><b class="'+(ok?'good':'warn')+'">'+(ok?'PASS':'WAIT')+'</b><div class="sub">'+esc(detail)+'</div></div>').join('')+'</div>';
@@ -816,7 +822,8 @@ function paperTrade(){
   '<div class="kv"><span>Order</span><b>'+esc(orderType==='limit'?'Limit @ '+money(limit):'Market @ quoted ask')+'</b></div>'+
   '<div class="kv"><span>Estimated maximum debit</span><b>'+money(maxCost)+'</b></div>'+
   '<div class="kv"><span>All-data evidence</span><b>'+num(ev.entry_combined_evidence_score,1)+'/100</b></div>'+
-  '<div class="kv"><span>Historical mean return</span><b>'+pc(ev.entry_historical_mean_return)+'</b></div>'+
+  '<div class="kv"><span>Robust historical mean return</span><b>'+pc(ev.entry_historical_trimmed_mean_return!=null?ev.entry_historical_trimmed_mean_return:ev.entry_historical_mean_return)+'</b></div>'+
+  '<div class="kv"><span>Raw historical mean return</span><b>'+pc(ev.entry_historical_mean_return)+'</b></div>'+
   '<div class="kv"><span>Historical profit frequency</span><b>'+pc(ev.entry_profit_frequency)+(ci[0]!=null&&ci[1]!=null?' · 95% '+pc(ci[0])+'–'+pc(ci[1]):'')+'</b></div>'+
   '<div class="kv"><span>Historical full-loss frequency</span><b>'+pc(ev.entry_full_premium_loss_frequency)+'</b></div>'+
   '<div class="kv"><span>Execution data</span><b class="'+(verified?'good':'warn')+'">'+esc(verified?'Verified live':'Research/snapshot only')+'</b></div>'+
@@ -885,7 +892,7 @@ function renderPaper(){
  const s=paperState();const filled=processPending(s);if(filled)savePaper(s);let unreal=0,real=0,cash=10000;paperOpen.innerHTML='';paperClosed.innerHTML='';paperPending.innerHTML='';
  s.open.forEach(p=>{const q=lookupMark(p),cost=p.entry_price*100*p.qty;cash-=cost;const val=q.mark==null?null:q.mark*100*p.qty,pl=val==null?null:val-cost;if(pl!=null)unreal+=pl;paperOpen.innerHTML+='<tr><td>'+p.ticker+'</td><td>'+p.expiration+' '+money(p.strike)+' '+p.type+'</td><td>'+new Date(p.opened_at).toLocaleDateString()+'</td><td>'+money(p.entry_price)+'</td><td>'+money(q.mark)+'</td><td class="'+(pl==null?'':pl>=0?'good':'bad')+'">'+(pl==null?'—':((pl>=0?'+':'')+money(pl)))+'</td><td>'+money(q.spot)+'</td><td>'+((q.spot==null||p.entry_spot==null)?'—':pc(q.spot/p.entry_spot-1))+'</td><td>'+(p.entry_evidence?esc(p.entry_evidence):'—')+'</td><td><button class="btn" onclick="closePaper('+p.id+')">Close</button></td></tr>'});
  s.pending.forEach(p=>{const q=paperQuoteFor(p);paperPending.innerHTML+='<tr><td>'+p.ticker+'</td><td>'+p.expiration+' '+money(p.strike)+' '+p.type+'</td><td>'+p.qty+'</td><td>'+money(p.limit_price)+'</td><td>'+money(q&&q.ask)+'</td><td class="warn">Pending</td><td><button class="btn" onclick="cancelPending('+p.id+')">Cancel</button></td></tr>'});if(!s.pending.length)paperPending.innerHTML='<tr><td colspan="7" class="empty">No pending orders.</td></tr>';
- s.closed.forEach(p=>{real+=p.pnl;cash+=p.pnl;const debit=Number(p.entry_price||0)*100*Number(p.qty||1),rr=debit>0?Number(p.pnl||0)/debit:null;paperClosed.innerHTML+='<tr><td>'+p.ticker+'</td><td>'+p.expiration+' '+money(p.strike)+' '+p.type+'</td><td>'+money(p.entry_price)+'</td><td>'+money(p.exit_price)+'</td><td class="'+(p.pnl>=0?'good':'bad')+'">'+(p.pnl>=0?'+':'')+money(p.pnl)+'</td><td class="'+(rr==null?'':rr>=0?'good':'bad')+'">'+pc(rr)+'</td><td>'+pc(p.entry_historical_mean_return)+'</td><td>'+pc(p.entry_profit_frequency)+'</td><td>'+num(p.entry_combined_evidence_score,1)+'/100 · '+esc(p.entry_market_data_confidence||'legacy')+'</td><td>'+new Date(p.opened_at).toLocaleDateString()+'</td><td>'+new Date(p.closed_at).toLocaleDateString()+'</td></tr>'});
+ s.closed.forEach(p=>{real+=p.pnl;cash+=p.pnl;const debit=Number(p.entry_price||0)*100*Number(p.qty||1),rr=debit>0?Number(p.pnl||0)/debit:null;paperClosed.innerHTML+='<tr><td>'+p.ticker+'</td><td>'+p.expiration+' '+money(p.strike)+' '+p.type+'</td><td>'+money(p.entry_price)+'</td><td>'+money(p.exit_price)+'</td><td class="'+(p.pnl>=0?'good':'bad')+'">'+(p.pnl>=0?'+':'')+money(p.pnl)+'</td><td class="'+(rr==null?'':rr>=0?'good':'bad')+'">'+pc(rr)+'</td><td>'+pc(p.entry_historical_trimmed_mean_return!=null?p.entry_historical_trimmed_mean_return:p.entry_historical_mean_return)+'</td><td>'+pc(p.entry_profit_frequency)+'</td><td>'+num(p.entry_combined_evidence_score,1)+'/100 · '+esc(p.entry_market_data_confidence||'legacy')+'</td><td>'+new Date(p.opened_at).toLocaleDateString()+'</td><td>'+new Date(p.closed_at).toLocaleDateString()+'</td></tr>'});
  const openVal=s.open.reduce((a,p)=>{const q=lookupMark(p);return a+(q.mark==null?0:q.mark*100*p.qty)},0),equity=cash+openVal;
  paperEquity.textContent=money(equity);paperBuying.textContent=money(cash);paperOptionValue.textContent=money(openVal);paperCount.textContent=s.open.length;paperUnreal.textContent=(unreal>=0?'+':'')+money(unreal);paperReal.textContent=(real>=0?'+':'')+money(real);paperUnreal.className='value '+(unreal>=0?'good':'bad');paperReal.className='value '+(real>=0?'good':'bad');
  if(!s.open.length)paperOpen.innerHTML='<tr><td colspan="10" class="empty">No open paper positions. Analyze a contract and choose Paper trade.</td></tr>';
