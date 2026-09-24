@@ -1,5 +1,5 @@
 import pandas as pd
-from src.opportunity_radar import build_opportunity_radar, _guidance_payload
+from src.opportunity_radar import build_opportunity_radar, _guidance_payload, build_market_guidance
 
 def test_radar_surfaces_and_reports_risk():
     idx=pd.bdate_range("2020-01-01",periods=320)
@@ -161,3 +161,28 @@ def test_guidance_marks_provider_conflict_and_blocks_forward_test():
     assert x["execution_verified_for_forward_test"] is False
     assert x["simulator_priority"] is False
     assert x["execution_points"] < 0
+
+
+def test_market_guidance_combines_ticker_leaders():
+    def g(sym,score,ev,prob,ci):
+        row={
+            "contract_symbol":sym,"combined_evidence_score":score,"score":score,
+            "expected_return_on_debit":ev,"prob_profit":prob,"prob_profit_ci95":ci,
+        }
+        return {"state":"strong_candidates","best_overall":row,"highest_upside":row,"higher_probability":row}
+    tickers=[
+        {"ticker":"AAA","options":{"opportunity_radar":{"guidance":g("AAA1",82,0.20,0.62,[0.56,0.68])}}},
+        {"ticker":"BBB","options":{"opportunity_radar":{"guidance":g("BBB1",78,0.45,0.66,[0.60,0.71])}}},
+    ]
+    out=build_market_guidance(tickers)
+    assert out["state"]=="strong_candidates"
+    assert out["strongest_overall"]["ticker"]=="AAA"
+    assert out["highest_historical_upside"]["ticker"]=="BBB"
+    assert out["highest_historical_profit_frequency"]["ticker"]=="BBB"
+    assert len(out["top_overall"])==2
+
+
+def test_market_guidance_has_explicit_no_contract_state():
+    out=build_market_guidance([{"ticker":"AAA","options":{"opportunity_radar":{"guidance":{"state":"no_strong_contract"}}}}])
+    assert out["state"]=="no_strong_contract"
+    assert out["strongest_overall"] is None
