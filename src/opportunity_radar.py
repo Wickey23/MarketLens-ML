@@ -148,7 +148,25 @@ def _guidance_payload(rows, evidence, current_regime=None, context=None, relativ
             event_notes.append("Current catalyst themes: "+", ".join(map(str,catalyst_flags[:4])))
         combined += event_points
 
+        quote_confidence=str(q.get("data_confidence") or "unknown").lower()
+        execution_live=q.get("execution_realtime") is True
+        quote_age_seconds=q.get("quote_age_seconds")
+        if quote_age_seconds is None and q.get("quote_age_hours") is not None:
+            quote_age_seconds=float(q.get("quote_age_hours"))*3600.0
+        execution_points=0.0
+        if quote_confidence=="conflict":
+            execution_points=-10.0
+        elif execution_live:
+            execution_points=4.0 if quote_confidence=="high" else (2.5 if quote_confidence=="medium" else 1.0)
+            if quote_age_seconds is not None:
+                execution_points += 1.0 if float(quote_age_seconds)<=15 else (0.0 if float(quote_age_seconds)<=60 else -3.0)
+        else:
+            execution_points=-2.0
+        combined += execution_points
+
         q["combined_evidence_score"]=round(max(0,min(100,combined)),1)
+        q["execution_status"]=("conflict" if quote_confidence=="conflict" else ("verified_live" if execution_live else "research_snapshot"))
+        q["execution_points"]=_f(execution_points)
         # Explain the practical risk profile separately from the score.
         dte_i=int(q.get("dte") or 0)
         theta_abs=abs(float(q.get("theta_cost_pct_per_day") or 0))
@@ -170,7 +188,11 @@ def _guidance_payload(rows, evidence, current_regime=None, context=None, relativ
             q["evidence_confidence"]="limited"
         q["simulator_priority"]=bool(
             dte_i>=3 and q["combined_evidence_score"]>=72 and p>=.58 and ev>0
-            and effective_n>=60
+            and effective_n>=60 and q["execution_status"]!="conflict"
+        )
+        q["execution_verified_for_forward_test"]=bool(
+            execution_live and quote_confidence!="conflict"
+            and quote_age_seconds is not None and float(quote_age_seconds)<=60
         )
         q["historical_downside_return_p10"]=_f(downside_return(q))
         q["reward_to_p10_downside"]=_f(rr)
@@ -190,6 +212,14 @@ def _guidance_payload(rows, evidence, current_regime=None, context=None, relativ
             "directional_alignment_points":_f(direction_points),
             "context_alignment_points":_f(context_points),
             "event_risk_points":_f(event_points),
+            "execution_quality_points":_f(execution_points),
+            "execution_status":q.get("execution_status"),
+            "execution_verified_for_forward_test":q.get("execution_verified_for_forward_test"),
+            "market_data_provider":q.get("selected_quote_provider"),
+            "market_data_provider_key":q.get("selected_quote_provider_key"),
+            "market_data_confidence":q.get("data_confidence"),
+            "provider_agreement_pct":_f(q.get("provider_agreement_pct")),
+            "quote_age_seconds":_f(quote_age_seconds),
             "regime":current_regime,
             "relative_strength_vs_spy_20d":_f(rel20),
             "days_to_earnings":days_to_earnings,
@@ -204,6 +234,9 @@ def _guidance_payload(rows, evidence, current_regime=None, context=None, relativ
              if auc is None or float(auc)<.53 else
              f"Validated directional evidence contributes {direction_points:+.1f} points"),
             f"Regime/relative-strength context contributes {context_points:+.1f} points",
+            ("Execution quote is verified live" if q.get("execution_status")=="verified_live" else
+             ("Market-data providers conflict; forward execution is blocked" if q.get("execution_status")=="conflict" else
+              "Current ranking uses a research snapshot; verify the live quote before forward testing")),
             *event_notes,
         ]
         if event_notes:
@@ -332,6 +365,14 @@ def build_opportunity_radar(raw, contracts, regime_series, current_regime, evide
             "expiration":c.get("expiration"),"dte":c.get("dte"),"strike":c.get("strike"),
             "entry_quote":_f(entry),
             "bid":_f(c.get("bid")),"ask":_f(c.get("ask")),"spread_pct":_f(spread),
+            "quote_age_hours":_f(c.get("quote_age_hours")),"quote_age_seconds":_f(c.get("quote_age_seconds")),
+            "selected_quote_provider":c.get("selected_quote_provider") or c.get("provider"),
+            "selected_quote_provider_key":c.get("selected_quote_provider_key") or c.get("provider_key"),
+            "selected_quote_feed":c.get("selected_quote_feed") or c.get("feed"),
+            "data_confidence":c.get("data_confidence"),
+            "provider_agreement_pct":_f(c.get("provider_agreement_pct")),
+            "execution_realtime":bool(c.get("execution_realtime")),
+            "realtime":bool(c.get("realtime")),"consolidated":bool(c.get("consolidated")),
             "iv":_f(iv),"iv_rv_ratio":_f(c.get("iv_rv_ratio")),
             "theta_cost_pct_per_day":_f(theta),"open_interest":int(oi),"volume":int(vol),
             "breakeven":_f(c.get("breakeven")),"breakeven_move":_f(c.get("breakeven_move")),
