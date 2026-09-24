@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from src.ai_paper_trader import run_ai_paper_portfolio, performance_summary
+from src.ai_paper_trader import run_ai_paper_portfolio, performance_summary, paper_to_real_readiness
 
 def snap():
     q={"contract_symbol":"ABC1","type":"call","expiration":"2099-12-31","dte":14,"strike":100,
@@ -146,3 +146,39 @@ def test_ai_uses_guided_best_overall_contract():
     assert len(out["open"])==1
     assert out["open"][0]["contract_key"]=="ABC2"
     assert out["open"][0]["entry_combined_evidence_score"]==84
+
+
+def test_readiness_requires_forward_sample():
+    state={"starting_cash":10000.0,"cash":10000.0,"open":[],"closed":[],"equity_history":[],"decisions":[]}
+    out=paper_to_real_readiness(state)
+    assert out["state"]=="collecting_forward_data"
+    assert out["all_checks_pass"] is False
+    sample=next(x for x in out["checks"] if x["id"]=="forward_sample")
+    assert sample["target"]==30
+    assert sample["pass"] is False
+
+
+def test_readiness_does_not_approve_losing_30_trade_record():
+    closed=[]
+    for i in range(30):
+        closed.append({
+            "ticker":["AAA","BBB","CCC"][i%3],
+            "pnl":-5.0,
+            "entry_cost":100.0,
+        })
+    state={
+        "starting_cash":10000.0,
+        "cash":9850.0,
+        "open":[],
+        "closed":closed,
+        "equity_history":[
+            {"at":"2026-01-01T00:00:00Z","equity":10000.0,"cash":10000.0,"open_value":0.0},
+            {"at":"2026-02-01T00:00:00Z","equity":9850.0,"cash":9850.0,"open_value":0.0},
+        ],
+        "decisions":[],
+    }
+    out=paper_to_real_readiness(state)
+    assert out["state"]=="paper_results_not_ready"
+    assert out["all_checks_pass"] is False
+    assert next(x for x in out["checks"] if x["id"]=="net_pnl")["pass"] is False
+    assert next(x for x in out["checks"] if x["id"]=="avg_trade")["pass"] is False
