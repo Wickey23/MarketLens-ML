@@ -73,6 +73,65 @@ def _snapshot_quote(ticker):
     }
 
 
+def _tradier_live_quote(ticker, token):
+    """Server-side Tradier quote fallback; the permanent token never reaches the browser."""
+    query=urllib.parse.urlencode({"symbols":ticker,"greeks":"false"})
+    url=f"https://api.tradier.com/v1/markets/quotes?{query}"
+    req=urllib.request.Request(
+        url,
+        headers={
+            "Authorization":f"Bearer {token}",
+            "Accept":"application/json",
+            "User-Agent":"MarketLens-ML/1.0",
+        },
+    )
+    with urllib.request.urlopen(req,timeout=5) as response:
+        body=json.loads(response.read().decode("utf-8"))
+    row=(body.get("quotes") or {}).get("quote")
+    if isinstance(row,list):
+        row=row[0] if row else None
+    if not isinstance(row,dict):
+        raise ValueError("Tradier quote unavailable")
+    def num(value):
+        try:
+            return float(value) if value is not None else None
+        except Exception:
+            return None
+    bid=num(row.get("bid")); ask=num(row.get("ask")); last=num(row.get("last"))
+    price=last if last is not None and last>0 else ((bid+ask)/2 if bid is not None and ask is not None and ask>=bid else None)
+    prev=num(row.get("prevclose"))
+    if prev is None:
+        prev=num(row.get("close"))
+    if price is None or price<=0:
+        raise ValueError("Tradier price unavailable")
+    change=(price-prev) if prev not in (None,0) else num(row.get("change"))
+    change_pct=(change/prev) if change is not None and prev not in (None,0) else None
+    ts=max(
+        int(num(row.get("bid_date")) or 0),
+        int(num(row.get("ask_date")) or 0),
+        int(num(row.get("trade_date")) or 0),
+    )
+    return {
+        "ticker":ticker,
+        "price":price,
+        "previous_close":prev,
+        "open":num(row.get("open")),
+        "high":num(row.get("high")),
+        "low":num(row.get("low")),
+        "bid":bid,
+        "ask":ask,
+        "change":change,
+        "change_pct":change_pct,
+        "market_timestamp":datetime.fromtimestamp(ts/1000,timezone.utc).isoformat() if ts else None,
+        "exchange":row.get("exch"),
+        "currency":"USD",
+        "provider":"Tradier Brokerage API",
+        "realtime":True,
+        "delayed":False,
+        "note":"Production Tradier brokerage quote. Real-time availability depends on the configured account entitlement.",
+    }
+
+
 def _finnhub_live_quote(ticker, api_key):
     """Optional provider-backed quote path for lower-latency production data."""
     query=urllib.parse.urlencode({"symbol":ticker,"token":api_key})
@@ -182,14 +241,19 @@ def live_quote(ticker):
     if cached and now - cached["at"] < _LIVE_QUOTE_TTL_SECONDS:
         return cached["payload"]
 
+    out=None
+    tradier_token=os.getenv("TRADIER_ACCESS_TOKEN")
+    if tradier_token:
+        try:
+            out=_tradier_live_quote(ticker,tradier_token)
+        except Exception:
+            out=None
     provider_key=os.getenv("FINNHUB_API_KEY")
-    if provider_key:
+    if out is None and provider_key:
         try:
             out=_finnhub_live_quote(ticker,provider_key)
         except Exception:
             out=None
-    else:
-        out=None
     if out is None:
         try:
             out=_yahoo_live_quote(ticker)
@@ -268,7 +332,11 @@ def api_live_quotes():
             "retrieved_at": datetime.now(timezone.utc).isoformat(),
             "quotes": quotes,
             "errors": errors,
-            "quote_note": ("Provider-backed underlying quotes." if os.getenv("FINNHUB_API_KEY") else "Near-live Yahoo Finance underlying quotes. Exchange/broker data may be delayed or differ."),
+            "quote_note": (
+                "Real-time Tradier Brokerage underlying quotes."
+                if os.getenv("TRADIER_ACCESS_TOKEN")
+                else ("Provider-backed underlying quotes." if os.getenv("FINNHUB_API_KEY") else "Near-live Yahoo Finance underlying quotes. Exchange/broker data may be delayed or differ.")
+            ),
         }
     )
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
@@ -350,7 +418,7 @@ def health():
             "commit": os.getenv("VERCEL_GIT_COMMIT_SHA"),
             "data_branch": "market-data",
             "live_quote_ttl_seconds": _LIVE_QUOTE_TTL_SECONDS,
-            "live_provider": ("tradier-stream" if os.getenv("TRADIER_ACCESS_TOKEN") else ("finnhub" if os.getenv("FINNHUB_API_KEY") else "yahoo-fallback")),
+            "live_provider": ("tradier-rest+stream" if os.getenv("TRADIER_ACCESS_TOKEN") else ("finnhub" if os.getenv("FINNHUB_API_KEY") else "yahoo-fallback")),
             "market_stream_configured": bool(os.getenv("TRADIER_ACCESS_TOKEN")),
         }
     )
