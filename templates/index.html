@@ -156,6 +156,29 @@ body{background:radial-gradient(circle at 50% -20%,#10203a 0,transparent 38%),va
 
 <script>
 let liveQuoteTimer=null,dataSyncTimer=null,marketStreamSocket=null,marketStreamSession=null,marketStreamConnected=false,marketStreamReconnect=null,streamRenderTimer=null;
+let controlKey=sessionStorage.getItem('marketlens_control_key')||'';
+async function controlledFetch(url,options={}){
+  const run=async()=>{
+    const headers=new Headers(options.headers||{});
+    if(controlKey)headers.set('X-MarketLens-Key',controlKey);
+    return fetch(url,{...options,headers});
+  };
+  let r=await run();
+  if(r.status!==401)return r;
+  let body={};try{body=await r.clone().json()}catch(e){}
+  if(!body.requires_control_key)return r;
+  const entered=window.prompt('Enter the MarketLens control key for this browser session:');
+  if(!entered)return r;
+  controlKey=entered.trim();
+  if(!controlKey)return r;
+  sessionStorage.setItem('marketlens_control_key',controlKey);
+  r=await run();
+  if(r.status===401){
+    sessionStorage.removeItem('marketlens_control_key');
+    controlKey='';
+  }
+  return r;
+}
 async function refreshLiveQuote(){
   if(!C||!C.ticker||document.hidden||marketStreamConnected)return;
   const requested=C.ticker;
@@ -256,7 +279,7 @@ async function startMarketStream(){
   const status=document.getElementById('liveMarketStatus');
   if(marketStreamReconnect){clearTimeout(marketStreamReconnect);marketStreamReconnect=null}
   try{
-    const r=await fetch('/api/market-stream/session',{method:'POST',cache:'no-store'});
+    const r=await controlledFetch('/api/market-stream/session',{method:'POST',cache:'no-store'});
     const j=await r.json();
     if(!r.ok||!j.ok){
       marketStreamConnected=false;
@@ -342,7 +365,7 @@ async function runResearch(ticker=null){
   b.disabled=true;s.textContent='Starting…';
   const t=ticker || (C&&C.ticker) || '';
   try{
-    const r=await fetch('/api/run-research',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticker:t})});
+    const r=await controlledFetch('/api/run-research',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticker:t})});
     const j=await r.json(); s.textContent=r.ok?('Fast refresh queued '+(t||'core')+' ✓'):(j.error||'Failed');
     if(r.ok){
       setTimeout(()=>s.textContent='Market/options refresh running…',1700);
