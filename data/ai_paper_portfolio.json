@@ -194,6 +194,12 @@
       "equity": 10015.0,
       "cash": 10015.0,
       "open_value": 0
+    },
+    {
+      "at": "2026-09-24T17:49:53.295675+00:00",
+      "equity": 10015.0,
+      "cash": 10015.0,
+      "open_value": 0
     }
   ],
   "decisions": [
@@ -376,8 +382,16 @@
       "action": "skip",
       "reason": "risk budget below one contract",
       "strategy_version": "v2_conservative"
+    },
+    {
+      "at": "2026-09-24T17:49:53.295675+00:00",
+      "ticker": "NVDA",
+      "contract": "NVDA261002C00207500",
+      "action": "skip",
+      "reason": "risk budget below one contract",
+      "strategy_version": "v2_conservative"
     }
   ],
-  "updated_at": "2026-09-24T03:12:46.053619+00:00",
-  "last_processed_snapshot": "2026-09-24T03:12:46.053416+00:00"
+  "updated_at": "2026-09-24T17:49:53.295675+00:00",
+  "last_processed_snapshot": "2026-09-24T17:49:53.295464+00:00"
 }
