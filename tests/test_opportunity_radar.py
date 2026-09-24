@@ -198,3 +198,31 @@ def test_historical_outcomes_reports_robust_return_and_tail_risk():
     assert 0 <= out["prob_return_ge_100pct"] <= 1
     assert 0 <= out["prob_loss_ge_50pct"] <= 1
     assert out["trimmed_mean_return_on_debit"] < out["expected_return_on_debit"]
+
+
+def test_guidance_accounts_for_earnings_implied_move_context():
+    row={
+        "contract_symbol":"EARN","state":"investigate","score":80.0,
+        "entry_quote":2.0,"prob_profit":0.64,"prob_profit_ci95":[0.58,0.69],
+        "prob_total_premium_loss":0.18,"expected_return_on_debit":0.28,
+        "trimmed_mean_return_on_debit":0.24,"median_return_on_debit":0.10,
+        "p10_pnl_per_contract":-70.0,"dte":14,"expiration":"2030-01-18",
+        "effective_samples":120,"theta_cost_pct_per_day":0.015,
+        "spread_pct":0.05,"risks":[],"reasons":[],"type":"call",
+    }
+    g=_guidance_payload(
+        [row],
+        {"mean_roc_auc":0.56,"historical_lift_ci95":[0.01,0.05]},
+        current_regime="Uptrend / Normal Vol",
+        context={"earnings":{"days_to_earnings":5,"avg_abs_1d_move":0.06}},
+        relative_strength={"vs_spy_20d":0.02},
+        model_probability=0.60,
+        options_summary={"implied_moves_by_expiration":{"2030-01-18":{"move":0.09}}},
+    )
+    x=g["best_overall"]
+    comp=x["all_data_components"]
+    assert comp["expiration_implied_move"]==0.09
+    assert comp["historical_avg_abs_earnings_move"]==0.06
+    assert comp["earnings_implied_vs_historical_ratio"]==1.5
+    assert comp["event_risk_points"] < 0
+    assert any("above the historical average earnings move" in z for z in x["risks"])
