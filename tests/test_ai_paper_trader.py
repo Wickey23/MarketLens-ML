@@ -18,7 +18,9 @@ def snap():
     r={"contract_symbol":"ABC1","type":"call","expiration":"2099-12-31","dte":14,"strike":100,
        "score":80,"prob_profit":.62,"expected_pnl_per_contract":18,"historical_scope":"same regime",
        "reasons":["test"],"risks":[]}
-    return {"generated_at":"2026-01-01T00:00:00Z","tickers":[{"ticker":"ABC",
+    return {"generated_at":"2026-09-24T14:59:00Z","tickers":[{"ticker":"ABC",
+        "research_refreshed_at":"2026-09-24T14:00:00Z",
+        "evidence":{"mean_roc_auc":0.55},
         "options":{"chain":{"contracts":[q],"realtime":True,"source":"test realtime"},"opportunity_radar":{"opportunities":[r]}}}]}
 
 def test_ai_paper_trader_enters_without_real_order():
@@ -275,3 +277,13 @@ def test_corrupt_existing_state_refuses_silent_reset(tmp_path):
         assert "refusing to reset history" in str(exc)
     else:
         raise AssertionError("Corrupt existing state must not silently reset")
+
+
+def test_ai_rejects_missing_deep_research_evidence():
+    s=snap()
+    s["tickers"][0].pop("research_refreshed_at",None)
+    s["tickers"][0]["evidence"]={}
+    state={"starting_cash":10000.0,"cash":10000.0,"open":[],"closed":[],"equity_history":[],"decisions":[]}
+    out=run_ai_paper_portfolio(s,state=state,now_dt=TEST_NOW)
+    assert out["open"]==[]
+    assert any("recent deep research evidence required" in d.get("reason","") for d in out["decisions"])
