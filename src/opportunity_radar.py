@@ -394,3 +394,38 @@ def build_opportunity_radar(raw, contracts, regime_series, current_regime, evide
         "learning_enabled":bool((learning or {}).get("enabled")),
         "method_note":"Today's contract economics replayed across historical underlying moves. Profit-frequency uncertainty and qualification use an overlap-adjusted effective sample count because multi-day forward returns overlap. Results are hypothetical, exclude changing historical IV/Greeks and are not a profitability guarantee.",
     }
+
+
+
+def build_market_guidance(tickers,limit=10):
+    """Combine per-ticker guidance into one market-wide research shortlist."""
+    overall=[];upside=[];probability=[]
+    for t in tickers or []:
+        ticker=t.get("ticker")
+        guidance=(((t.get("options") or {}).get("opportunity_radar") or {}).get("guidance") or {})
+        if guidance.get("state")!="strong_candidates":
+            continue
+        for key,dest in (("best_overall",overall),("highest_upside",upside),("higher_probability",probability)):
+            row=guidance.get(key)
+            if row:
+                dest.append({**row,"ticker":ticker})
+
+    overall.sort(key=lambda r:(float(r.get("combined_evidence_score") or r.get("score") or 0),
+                               float(r.get("expected_return_on_debit") or -1e9)),reverse=True)
+    upside.sort(key=lambda r:(float(r.get("expected_return_on_debit") or -1e9),
+                              float(r.get("combined_evidence_score") or r.get("score") or 0)),reverse=True)
+    probability.sort(key=lambda r:(
+        float(((r.get("prob_profit_ci95") or [0,None])[0]) or 0),
+        float(r.get("prob_profit") or 0),
+        float(r.get("combined_evidence_score") or r.get("score") or 0),
+    ),reverse=True)
+
+    return {
+        "state":"strong_candidates" if overall else "no_strong_contract",
+        "strongest_overall":overall[0] if overall else None,
+        "highest_historical_upside":upside[0] if upside else None,
+        "highest_historical_profit_frequency":probability[0] if probability else None,
+        "top_overall":overall[:limit],
+        "tickers_with_strong_candidates":len({r.get("ticker") for r in overall if r.get("ticker")}),
+        "note":"Market-wide lenses compare only deeply analyzed contracts that already cleared per-ticker quality gates. Historical payoff statistics are not forecasts.",
+    }
