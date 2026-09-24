@@ -1,5 +1,5 @@
 import pandas as pd
-from src.opportunity_radar import build_opportunity_radar, _guidance_payload, build_market_guidance
+from src.opportunity_radar import build_opportunity_radar, _guidance_payload, build_market_guidance, _historical_outcomes
 
 def test_radar_surfaces_and_reports_risk():
     idx=pd.bdate_range("2020-01-01",periods=320)
@@ -186,3 +186,15 @@ def test_market_guidance_has_explicit_no_contract_state():
     out=build_market_guidance([{"ticker":"AAA","options":{"opportunity_radar":{"guidance":{"state":"no_strong_contract"}}}}])
     assert out["state"]=="no_strong_contract"
     assert out["strongest_overall"] is None
+
+
+def test_historical_outcomes_reports_robust_return_and_tail_risk():
+    contract={"type":"call","strike":100.0}
+    returns=pd.Series([-0.20,-0.10,0.0,0.05,0.10,0.20,0.30,0.40,0.50,2.00])
+    out=_historical_outcomes(contract,100.0,5.0,returns,overlap_horizon=1)
+    assert out["trimmed_mean_return_on_debit"] is not None
+    assert out["expected_shortfall_10_pnl"] is not None
+    assert 0 <= out["prob_return_ge_50pct"] <= 1
+    assert 0 <= out["prob_return_ge_100pct"] <= 1
+    assert 0 <= out["prob_loss_ge_50pct"] <= 1
+    assert out["trimmed_mean_return_on_debit"] < out["expected_return_on_debit"]
