@@ -73,6 +73,18 @@ def valuation_mark(pos,tickers):
         return float(pos["last_mark"])
     return float(pos.get("entry_price") or 0.0)
 
+def timestamp_age_hours(value, now_dt):
+    if not value:
+        return None
+    try:
+        dt=datetime.fromisoformat(str(value).replace("Z","+00:00"))
+        if dt.tzinfo is None:
+            dt=dt.replace(tzinfo=timezone.utc)
+        return max(0.0,(now_dt-dt.astimezone(timezone.utc)).total_seconds()/3600.0)
+    except Exception:
+        return None
+
+
 def quote_age_hours(contract, now_dt):
     # Prefer the provider's quote timestamp. A last-trade timestamp is only a
     # fallback because a recent trade does not prove the current bid/ask is fresh.
@@ -216,6 +228,10 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
             ask=q.get("ask")
             age=quote_age_hours(q,now_dt)
             guard_reasons=[]
+            research_age=timestamp_age_hours(t.get("research_refreshed_at"),now_dt)
+            evidence=t.get("evidence") or {}
+            if research_age is None or research_age>48 or evidence.get("mean_roc_auc") is None:
+                guard_reasons.append("recent deep research evidence required")
             if not chain_realtime: guard_reasons.append("real-time option data required for current strategy")
             if dte is None or int(dte)<min_dte or int(dte)>max_dte: guard_reasons.append("DTE outside autonomous policy")
             if bid is None or ask is None or float(bid)<=0 or float(ask)<=0 or float(ask)<float(bid): guard_reasons.append("two-sided executable quote unavailable")
@@ -255,6 +271,7 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
              "entry_dte":q.get("dte"),"entry_iv":q.get("iv"),"entry_iv_rv_ratio":q.get("iv_rv_ratio"),
              "entry_spread_pct":q.get("spread_pct"),"entry_theta_cost_pct_per_day":q.get("theta_cost_pct_per_day"),
              "entry_regime":t.get("regime"),"entry_model_auc":(t.get("evidence") or {}).get("mean_roc_auc"),
+             "entry_research_age_hours":timestamp_age_hours(t.get("research_refreshed_at"),now_dt),
              "entry_prob_profit":r.get("prob_profit"),"entry_expected_pnl":r.get("expected_pnl_per_contract"),
              "entry_scope":r.get("historical_scope"),"strategy_version":CURRENT_STRATEGY_VERSION,
              "entry_market_data_source":chain_source,"entry_market_data_realtime":chain_realtime,
