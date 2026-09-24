@@ -292,14 +292,21 @@ def analyze(ticker,learning=None):
         }
 
     annual_rv=sf(daily.rolling(20).std().iloc[-1]*sqrt(252))
+    research_close=float(close.iloc[-1])
+    market_spot=research_close
+    market_change_1d=sf(daily.iloc[-1])
     options={
         "status":"Historical distribution + delayed option chain active",
         "horizons":horizons,
         "realized_vol_20d":annual_rv,
     }
     try:
-        options["chain"]=option_snapshot(ticker,float(close.iloc[-1]),annual_rv)
-        options["summary"]=options_summary(options["chain"],float(close.iloc[-1]))
+        options["chain"]=option_snapshot(ticker,research_close,annual_rv)
+        market_spot=sf(options["chain"].get("underlying_price")) or research_close
+        underlying_quote=options["chain"].get("underlying_quote") or {}
+        previous_close=sf(underlying_quote.get("previous_close"))
+        market_change_1d=(market_spot/previous_close-1) if previous_close and previous_close>0 else sf(daily.iloc[-1])
+        options["summary"]=options_summary(options["chain"],float(market_spot))
     except Exception as e:
         options["chain"]={"error":str(e),"contracts":[],"quote_note":"Option chain unavailable for this run."}
         options["summary"]={}
@@ -312,15 +319,16 @@ def analyze(ticker,learning=None):
     rel=relative_strength(raw,ticker)
     regime_series=classify_regime(raw)
     current_regime=str(regime_series.iloc[-1])
-    options["opportunity_radar"]=build_opportunity_radar(raw,(options.get("chain") or {}).get("contracts") or [],regime_series,current_regime,evidence,float(close.iloc[-1]),learning=learning,context=ctx,relative_strength=rel,model_probability=current)
+    options["opportunity_radar"]=build_opportunity_radar(raw,(options.get("chain") or {}).get("contracts") or [],regime_series,current_regime,evidence,float(market_spot),learning=learning,context=ctx,relative_strength=rel,model_probability=current)
     explanation=plain_language(ticker,evidence,ctx,options,rel)
 
     return {
         "ticker":ticker,
         "research_refreshed_at":datetime.now(timezone.utc).isoformat(),
         "as_of":str(raw.index[-1].date()),
-        "price":sf(close.iloc[-1]),
-        "change_1d":sf(daily.iloc[-1]),
+        "price":sf(market_spot),
+        "research_close":sf(research_close),
+        "change_1d":sf(market_change_1d),
         "change_5d":sf(close.pct_change(5).iloc[-1]),
         "probability_5d_up":current,
         "model_probabilities":mp,
