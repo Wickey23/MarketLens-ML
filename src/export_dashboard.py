@@ -15,7 +15,7 @@ from src.data_loader import download_prices
 from src.features import add_target, build_features
 from src.options_data import option_snapshot, tradier_market_clock
 from src.regime import classify_regime
-from src.opportunity_radar import build_opportunity_radar
+from src.opportunity_radar import build_opportunity_radar, build_market_guidance
 from src.ai_paper_trader import load_state, save_state, run_ai_paper_portfolio, performance_summary, performance_attribution, learning_profile, paper_to_real_readiness, strategy_performance_summary, forward_validation_summary, CURRENT_STRATEGY_VERSION
 from src.universe_scanner import choose_research_universe
 from src.train import FEATURES
@@ -415,6 +415,7 @@ def main():
         p["tickers"]=list(by_ticker.values())
     else:
         p["tickers"]=[by_ticker[t] for t in tickers if t in by_ticker]
+    p["market_guidance"]=build_market_guidance(p.get("tickers") or [])
     p["generated_at"]=datetime.now(timezone.utc).isoformat()
     p["market_clock"]=tradier_market_clock()
     p["horizon_days"]=HORIZON
