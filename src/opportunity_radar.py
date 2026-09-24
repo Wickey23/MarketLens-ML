@@ -161,7 +161,7 @@ def _guidance_payload(rows, evidence, current_regime=None, context=None, relativ
         else:
             q["risk_tier"]="lower_relative_risk"
         ci_width=(float(ci[1])-float(ci[0])) if ci[0] is not None and ci[1] is not None else None
-        effective_n=int(q.get("effective_samples") or 0)
+        effective_n=int(q.get("effective_samples") if q.get("effective_samples") is not None else (q.get("samples") or 0))
         if effective_n>=300 and ci_width is not None and ci_width<=.10:
             q["evidence_confidence"]="higher"
         elif effective_n>=150 and ci_width is not None and ci_width<=.16:
