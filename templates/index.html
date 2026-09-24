@@ -238,7 +238,7 @@ async function refreshSelectedOptionQuote(){
     selectedContract.provider_agreement_pct=q.provider_agreement_pct;
     selectedContract.provider_candidates=q.provider_candidates||[];
     selectedContract.execution_realtime=!!q.execution_realtime;
-    selectedContract.live_quote=true;
+    selectedContract.live_quote=!!q.realtime;
     renderChain();refreshSelectedContractLiveStats();renderReturnOutlook();
   }catch(e){}
 }
