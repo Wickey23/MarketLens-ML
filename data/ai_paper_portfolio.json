@@ -447,6 +447,17 @@
       "strategy_realized_pnl": 0,
       "strategy_unrealized_pnl": 0,
       "market_session_open": false
+    },
+    {
+      "at": "2026-10-02T18:19:35.781370+00:00",
+      "equity": 10015.0,
+      "cash": 10015.0,
+      "open_value": 0,
+      "strategy_version": "v3_realtime_session",
+      "strategy_equity": 10000.0,
+      "strategy_realized_pnl": 0,
+      "strategy_unrealized_pnl": 0,
+      "market_session_open": true
     }
   ],
   "decisions": [
@@ -646,11 +657,20 @@
       "score": 79.7,
       "reason": "real-time option data required for current strategy",
       "strategy_version": "v3_realtime_session"
+    },
+    {
+      "at": "2026-10-02T18:19:35.781370+00:00",
+      "ticker": "NVDA",
+      "contract": "NVDA261023C00210000",
+      "action": "skip",
+      "score": 82.8,
+      "reason": "recent deep research evidence required; execution-grade real-time option data required for current strategy; option quote is stale or timestamp unavailable",
+      "strategy_version": "v3_realtime_session"
     }
   ],
-  "updated_at": "2026-10-01T23:04:42.040792+00:00",
-  "last_processed_snapshot": "2026-10-01T23:04:41.835768+00:00",
+  "updated_at": "2026-10-02T18:19:35.781370+00:00",
+  "last_processed_snapshot": "2026-10-02T18:19:35.369774+00:00",
   "strategy_version": "v3_realtime_session",
-  "paper_market_session_open": false,
-  "market_clock_state": "postmarket"
+  "paper_market_session_open": true,
+  "market_clock_state": "open"
 }
