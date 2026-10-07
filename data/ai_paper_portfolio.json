@@ -535,6 +535,17 @@
       "strategy_realized_pnl": 0,
       "strategy_unrealized_pnl": 0,
       "market_session_open": false
+    },
+    {
+      "at": "2026-10-07T04:24:04.634009+00:00",
+      "equity": 10015.0,
+      "cash": 10015.0,
+      "open_value": 0,
+      "strategy_version": "v4_autonomous_research_live",
+      "strategy_equity": 10000.0,
+      "strategy_realized_pnl": 0,
+      "strategy_unrealized_pnl": 0,
+      "market_session_open": false
     }
   ],
   "decisions": [
@@ -754,9 +765,33 @@
       "strategy_version": "v3_realtime_session"
     }
   ],
-  "updated_at": "2026-10-07T04:19:38.982561+00:00",
-  "last_processed_snapshot": "2026-10-07T04:19:38.895507+00:00",
-  "strategy_version": "v3_realtime_session",
+  "updated_at": "2026-10-07T04:24:04.634009+00:00",
+  "last_processed_snapshot": "2026-10-07T04:24:04.601914+00:00",
+  "strategy_version": "v4_autonomous_research_live",
   "paper_market_session_open": false,
-  "market_clock_state": "closed"
+  "market_clock_state": "closed",
+  "autonomous": true,
+  "autonomous_policy": {
+    "strategy_version": "v4_autonomous_research_live",
+    "paper_only": true,
+    "max_positions": 3,
+    "risk_per_trade": 0.02,
+    "min_score": 75.0,
+    "min_dte": 21,
+    "max_dte": 120,
+    "max_spread": 0.15,
+    "max_theta_pct_per_day": 0.025,
+    "max_quote_age_seconds": 60.0,
+    "requires_execution_realtime": true,
+    "entry_source": "MarketLens Opportunity Radar",
+    "exit_rules": [
+      "profit_target",
+      "risk_limit",
+      "research_deterioration",
+      "news_thesis_break",
+      "profit_protection",
+      "time_risk",
+      "expiration"
+    ]
+  }
 }
