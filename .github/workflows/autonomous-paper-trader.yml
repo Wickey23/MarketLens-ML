@@ -38,6 +38,26 @@ jobs:
           git show origin/market-data:data/dashboard.json > data/dashboard.json || true
           git show origin/market-data:data/ai_paper_portfolio.json > data/ai_paper_portfolio.json || true
       - run: pip install -r requirements-ml.txt
+      - name: Tradier authentication preflight
+        env:
+          TRADIER_ACCESS_TOKEN: ${{ secrets.TRADIER_ACCESS_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os, urllib.request, urllib.error
+          token=os.getenv("TRADIER_ACCESS_TOKEN")
+          if not token:
+              print("::warning::TRADIER_ACCESS_TOKEN is not configured")
+          else:
+              req=urllib.request.Request(
+                  "https://api.tradier.com/v1/markets/clock",
+                  headers={"Authorization":f"Bearer {token}","Accept":"application/json","User-Agent":"MarketLens-ML/1.0"},
+              )
+              try:
+                  with urllib.request.urlopen(req,timeout=8) as r:
+                      print(f"Tradier preflight HTTP {r.status}")
+              except urllib.error.HTTPError as e:
+                  print(f"::warning::Tradier preflight HTTP {e.code}; autonomous entries will remain blocked")
+          PY
       - name: Run market-wide autonomous paper cycle
         run: python -m src.fast_refresh
       - name: Persist market research and AI portfolio
