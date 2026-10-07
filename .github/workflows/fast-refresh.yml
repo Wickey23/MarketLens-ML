@@ -6,6 +6,8 @@ on:
       - "src/fast_refresh.py"
       - "src/ai_paper_trader.py"
       - "src/opportunity_radar.py"
+      - "src/company_context.py"
+      - "src/options_data.py"
       - ".github/workflows/fast-refresh.yml"
   workflow_dispatch:
     inputs:
@@ -14,7 +16,7 @@ on:
         required: false
         type: string
   schedule:
-    - cron: "*/30 13-21 * * 1-5"
+    - cron: "*/5 13-21 * * 1-5"
 
 permissions:
   contents: write
