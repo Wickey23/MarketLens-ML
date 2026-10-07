@@ -91,6 +91,10 @@ def _guidance_payload(rows, evidence, current_regime=None, context=None, relativ
     earnings=(ctx.get("earnings") or {})
     days_to_earnings=earnings.get("days_to_earnings")
     catalyst_flags=list(ctx.get("catalyst_flags") or [])
+    news_signal=ctx.get("news_signal") or {}
+    news_score=float(news_signal.get("score") or 0.0)
+    news_confidence=float(news_signal.get("confidence") or 0.0)
+    news_conflicting=bool(news_signal.get("conflicting"))
     rel20=(relative_strength or {}).get("vs_spy_20d")
     implied_moves=((options_summary or {}).get("implied_moves_by_expiration") or {})
     historical_earnings_move=earnings.get("avg_abs_1d_move")
@@ -176,7 +180,20 @@ def _guidance_payload(rows, evidence, current_regime=None, context=None, relativ
             earnings_move_ratio=None
         if catalyst_flags:
             event_notes.append("Current catalyst themes: "+", ".join(map(str,catalyst_flags[:4])))
-        combined += event_points
+
+        # News is a bounded context modifier. It cannot rescue a weak contract.
+        # Only reasonably confident, recent/non-duplicate headline evidence is used.
+        news_points=0.0
+        if news_confidence>=.35 and abs(news_score)>=.10 and not news_conflicting:
+            directional_news=news_score if side=="call" else (-news_score if side=="put" else 0.0)
+            news_points=max(-3.0,min(3.0,directional_news*3.0*news_confidence))
+            if news_points>=.5:
+                event_notes.append(f"Recent news context supports this {side} by {news_points:+.1f} points")
+            elif news_points<=-.5:
+                event_notes.append(f"Recent news context opposes this {side} by {news_points:+.1f} points")
+        elif news_conflicting and news_confidence>=.25:
+            event_notes.append("Recent headlines conflict, so news receives no directional boost")
+        combined += event_points+news_points
 
         quote_confidence=str(q.get("data_confidence") or "unknown").lower()
         execution_live=q.get("execution_realtime") is True
@@ -247,6 +264,10 @@ def _guidance_payload(rows, evidence, current_regime=None, context=None, relativ
             "directional_alignment_points":_f(direction_points),
             "context_alignment_points":_f(context_points),
             "event_risk_points":_f(event_points),
+            "news_context_points":_f(news_points),
+            "news_signal_score":_f(news_score),
+            "news_signal_confidence":_f(news_confidence),
+            "news_signal_conflicting":bool(news_conflicting),
             "execution_quality_points":_f(execution_points),
             "execution_status":q.get("execution_status"),
             "execution_verified_for_forward_test":q.get("execution_verified_for_forward_test"),
@@ -272,6 +293,9 @@ def _guidance_payload(rows, evidence, current_regime=None, context=None, relativ
              if auc is None or float(auc)<.53 else
              f"Validated directional evidence contributes {direction_points:+.1f} points"),
             f"Regime/relative-strength context contributes {context_points:+.1f} points",
+            (f"News context contributes {news_points:+.1f} points (signal {news_score:+.2f}, confidence {news_confidence:.0%})"
+             if abs(news_points)>=.05 else
+             f"News context contributes no directional boost (signal {news_score:+.2f}, confidence {news_confidence:.0%})"),
             ("Execution quote is verified live" if q.get("execution_status")=="verified_live" else
              ("Market-data providers conflict; forward execution is blocked" if q.get("execution_status")=="conflict" else
               "Current ranking uses a research snapshot; verify the live quote before forward testing")),
