@@ -557,6 +557,17 @@
       "strategy_realized_pnl": 0,
       "strategy_unrealized_pnl": 0,
       "market_session_open": false
+    },
+    {
+      "at": "2026-10-07T17:04:19.194601+00:00",
+      "equity": 10015.0,
+      "cash": 10015.0,
+      "open_value": 0,
+      "strategy_version": "v4_autonomous_research_live",
+      "strategy_equity": 10000.0,
+      "strategy_realized_pnl": 0,
+      "strategy_unrealized_pnl": 0,
+      "market_session_open": true
     }
   ],
   "decisions": [
@@ -774,19 +785,39 @@
       "score": 82.2,
       "reason": "execution-grade real-time option data required for current strategy; option quote is stale or timestamp unavailable",
       "strategy_version": "v3_realtime_session"
+    },
+    {
+      "at": "2026-10-07T17:04:19.194601+00:00",
+      "ticker": "NVDA",
+      "contract": "NVDA261023C00210000",
+      "action": "skip",
+      "score": 80.3,
+      "reason": "execution-grade real-time option data required for current strategy; DTE outside autonomous policy; option quote is stale or timestamp unavailable",
+      "strategy_version": "v4_autonomous_research_live"
+    },
+    {
+      "at": "2026-10-07T17:04:19.194601+00:00",
+      "ticker": "NVDA",
+      "contract": "NVDA261023C00195000",
+      "action": "skip",
+      "score": 75.3,
+      "reason": "execution-grade real-time option data required for current strategy; DTE outside autonomous policy; option quote is stale or timestamp unavailable",
+      "strategy_version": "v4_autonomous_research_live"
     }
   ],
-  "updated_at": "2026-10-07T04:25:18.076975+00:00",
-  "last_processed_snapshot": "2026-10-07T04:25:18.035205+00:00",
+  "updated_at": "2026-10-07T17:04:19.194601+00:00",
+  "last_processed_snapshot": "2026-10-07T17:04:19.002410+00:00",
   "strategy_version": "v4_autonomous_research_live",
-  "paper_market_session_open": false,
-  "market_clock_state": "closed",
+  "paper_market_session_open": true,
+  "market_clock_state": "open",
   "autonomous": true,
   "autonomous_policy": {
     "strategy_version": "v4_autonomous_research_live",
     "paper_only": true,
     "max_positions": 3,
-    "risk_per_trade": 0.02,
+    "risk_per_trade": 0.05,
+    "max_premium_fraction": 0.15,
+    "stop_loss_fraction": 0.35,
     "min_score": 75.0,
     "min_dte": 21,
     "max_dte": 120,
