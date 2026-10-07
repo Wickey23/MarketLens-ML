@@ -88,8 +88,29 @@ def _tradier_expirations(ticker, max_expiries):
         "contractSize":"false",
         "expirationType":"false",
     })
-    dates=((body.get("expirations") or {}).get("date"))
-    return [str(x) for x in _as_list(dates) if x][:max_expiries]
+    dates=[str(x) for x in _as_list((body.get("expirations") or {}).get("date")) if x]
+    today=datetime.now(ZoneInfo("America/New_York")).date()
+    parsed=[]
+    for ds in dates:
+        try:
+            dte=(date.fromisoformat(ds)-today).days
+            if 0<=dte<=150:
+                parsed.append((ds,dte))
+        except Exception:
+            continue
+    if not parsed:
+        return dates[:max_expiries]
+    # Prefer expirations relevant to the autonomous longer-duration strategy,
+    # while still keeping one near-term expiry for UI/research context.
+    targets=[7,21,30,45,60,90,120]
+    selected=[]
+    for target in targets:
+        row=min(parsed,key=lambda x:abs(x[1]-target))
+        if row[0] not in selected:
+            selected.append(row[0])
+        if len(selected)>=max_expiries:
+            break
+    return sorted(selected,key=lambda ds:date.fromisoformat(ds))
 
 
 def _tradier_underlying_quote(ticker, now):
@@ -331,7 +352,7 @@ def _alpaca_option_snapshot(ticker, spot, annual_rv, max_expiries, strikes_each_
             "feed":feed,
             "limit":1000,
             "expiration_date_gte":market_today.isoformat(),
-            "expiration_date_lte":(market_today+timedelta(days=60)).isoformat(),
+            "expiration_date_lte":(market_today+timedelta(days=120)).isoformat(),
             "strike_price_gte":max(0.01,float(spot)*0.70),
             "strike_price_lte":float(spot)*1.30,
         },
