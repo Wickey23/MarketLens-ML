@@ -43,31 +43,39 @@ body{background:radial-gradient(circle at 50% -20%,#10203a 0,transparent 38%),va
 
 /* Brokerage-style paper simulator: familiar workflow without copying proprietary branding */
 .brokerShell{max-width:980px;margin:0 auto}.brokerTop{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;padding:18px 4px 8px}.brokerEyebrow{font-size:11px;letter-spacing:.12em;font-weight:800;color:var(--muted)}.brokerTop h2{margin:8px 0 2px;font-size:22px}.brokerEquity{font-size:44px;line-height:1.05;font-weight:800;letter-spacing:-.035em}.brokerReturn{font-size:15px;font-weight:700;margin-top:6px}.brokerPower{min-width:180px;border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:var(--panel)}.brokerPower span{display:block;color:var(--muted);font-size:12px}.brokerPower b{display:block;font-size:20px;margin-top:4px}.brokerChart{padding:8px 0 2px}.brokerChart svg{display:block;width:100%;height:auto;max-height:190px}.brokerGrid{fill:none;stroke:var(--line);stroke-width:1;opacity:.6}.brokerLine{fill:none;stroke:var(--accent);stroke-width:3;stroke-linecap:round}.brokerRange{display:flex;gap:7px;margin-top:2px}.brokerRange button{border:0;background:transparent;color:var(--muted);font:inherit;font-size:12px;font-weight:700;padding:7px 9px;border-radius:8px}.brokerRange button.active{background:var(--accentSoft);color:var(--accent)}.brokerStats{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin:12px 0 26px}.brokerStats>div{padding:16px 14px}.brokerStats span{display:block;color:var(--muted);font-size:12px}.brokerStats b{display:block;font-size:17px;margin-top:5px}.brokerSection{padding:8px 0 24px}.brokerSectionHead{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-bottom:10px}.brokerSectionHead h3{margin:0 0 3px;font-size:20px}.positionList{border-top:1px solid var(--line)}.positionRow{display:grid;grid-template-columns:minmax(180px,1.5fr) 1fr 1fr auto;gap:14px;align-items:center;padding:15px 4px;border-bottom:1px solid var(--line)}.positionSymbol{font-size:16px;font-weight:800}.positionMeta{font-size:12px;color:var(--muted);margin-top:3px}.positionMetric span{display:block;font-size:11px;color:var(--muted)}.positionMetric b{display:block;margin-top:3px}.positionActions{display:flex;gap:8px}.brokerEmpty{padding:24px 4px;color:var(--muted);border-bottom:1px solid var(--line)}.brokerDetails{border-top:1px solid var(--line);padding-top:16px}.brokerDetails summary{cursor:pointer;font-weight:750;padding:8px 0}.brokerDetailBody{padding-top:5px}.brokerTable{overflow-x:auto}.brokerTable table{min-width:680px}@media(max-width:700px){.brokerTop{display:block}.brokerPower{margin-top:14px;min-width:0}.brokerEquity{font-size:36px}.brokerStats{grid-template-columns:repeat(2,1fr)}.positionRow{grid-template-columns:1fr 1fr}.positionActions{grid-column:1/-1}.brokerSectionHead{align-items:flex-start}.brokerSectionHead .btn{white-space:nowrap}}
+
+/* MarketLens brokerage UI — mirrors familiar retail-broker workflow while retaining MarketLens identity */
+:root{--rh-bg:#000;--rh-panel:#0b0b0b;--rh-panel2:#111;--rh-line:#242424;--rh-text:#fff;--rh-muted:#8c8c8c;--rh-green:#00c805;--rh-green-dim:#003f02;--rh-red:#ff5000;--accent:#00c805;--accentSoft:#062b08;--line:#242424;--panel:#0b0b0b;--muted:#8c8c8c}
+body{background:#000;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif}.w{max-width:1280px;padding:0 28px 60px}.card,.box,.panel{background:#0b0b0b;border-color:#242424;box-shadow:none}.btn,.tab,.input,.select{border-color:#303030;background:#0b0b0b;color:#fff}.btn.primary{background:#00c805;color:#000;border-color:#00c805;font-weight:800}.good{color:#00c805}.bad{color:#ff5000}.warn{color:#f5c400}.sub,.muted{color:#8c8c8c}.label{color:#8c8c8c}.rhNav{height:64px;display:flex;align-items:center;gap:24px;border-bottom:1px solid #161616;position:sticky;top:0;background:rgba(0,0,0,.96);z-index:40}.rhBrand{font-size:21px;font-weight:850;letter-spacing:-.6px;white-space:nowrap}.rhBrand:after{content:" ML";color:#00c805}.rhNavLinks{display:flex;gap:18px}.rhNavLink{border:0;background:transparent;color:#cfcfcf;font-weight:700;font-size:14px;cursor:pointer;padding:21px 0}.rhNavLink:hover,.rhNavLink.active{color:#00c805}.rhSearch{display:flex;align-items:center;flex:1;max-width:420px;border:1px solid #303030;border-radius:24px;background:#0b0b0b;height:40px;padding-left:15px}.rhSearchInput{border:0;outline:0;background:transparent;color:#fff;width:100%;font-size:14px;text-transform:uppercase}.rhSearchBtn{width:38px;height:38px;border:0;background:transparent;color:#aaa;font-size:21px;cursor:pointer}.rhStatus{font-size:10px;color:#777;margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:2px}.rhRefresh{border:1px solid #303030;background:#000;color:#fff;border-radius:20px;padding:8px 13px;font-weight:700;cursor:pointer}.rhHiddenTabs{display:none!important}.rhTickerTabs{display:flex;gap:6px;overflow:auto;flex-wrap:nowrap;padding:12px 0;margin:0;border-bottom:1px solid #161616}.rhTickerTabs .tab{border:0;background:transparent;padding:7px 11px;border-radius:18px;font-weight:700}.rhTickerTabs .tab.active{background:#151515;color:#00c805}.view{display:none}.view.active{display:block}.rhAssetHead{display:flex;justify-content:space-between;align-items:flex-start;padding:28px 0 18px}.rhAssetTicker{font-size:25px;font-weight:800;letter-spacing:-.5px}.rhAssetPrice{font-size:38px;font-weight:760;letter-spacing:-1.2px;margin-top:5px}.rhAssetMove{font-size:14px;color:#00c805;margin-top:4px}.rhMarketBadge{font-size:12px;color:#888;border:1px solid #2b2b2b;border-radius:20px;padding:7px 11px}.rhOptionsToolbar{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid #1b1b1b;padding-bottom:14px}.rhSegment{display:inline-flex;background:#151515;border-radius:22px;padding:3px}.rhSegment button{border:0;background:transparent;color:#aaa;border-radius:18px;padding:8px 20px;font-weight:750;cursor:pointer}.rhSegment button.active{background:#2a2a2a;color:#fff}.rhExpWrap{display:flex;align-items:center;border-bottom:1px solid #1b1b1b}.rhExpBar{display:flex;gap:5px;overflow:auto;scrollbar-width:none;flex:1;padding:11px 2px}.rhExpBar::-webkit-scrollbar{display:none}.rhExpBtn{border:0;background:transparent;color:#9b9b9b;padding:8px 12px;border-radius:17px;font-weight:750;cursor:pointer;white-space:nowrap}.rhExpBtn.active{background:#072a08;color:#00c805}.rhExpArrow{border:0;background:#000;color:#777;font-size:24px;cursor:pointer;padding:6px}.rhNativeHidden{display:none!important}.rhChainMeta{display:flex;justify-content:space-between;gap:16px;align-items:center;color:#737373;font-size:11px;padding:10px 4px}.rhTextButton{border:0;background:transparent;color:#00c805;font-weight:700;cursor:pointer}.rhChainPanel{border-top:1px solid #161616}.rhChainHeader{display:grid;grid-template-columns:1fr auto;padding:10px 8px;color:#6e6e6e;font-size:11px}.rhChainRows{border-top:1px solid #161616}.rhOptionRow{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;padding:13px 8px;border-bottom:1px solid #171717;cursor:pointer;transition:background .12s}.rhOptionRow:hover{background:#0a0a0a}.rhOptionMain{min-width:0}.rhOptionTitle{font-size:16px;font-weight:760}.rhOptionSub{font-size:11px;color:#7f7f7f;margin-top:3px}.rhOptionPriceWrap{display:flex;align-items:center;gap:9px}.rhOptionPrice{border:1px solid #00c805;color:#00c805;border-radius:18px;padding:7px 10px;font-weight:800;min-width:74px;text-align:center}.rhOptionAdd{width:31px;height:31px;border-radius:50%;border:1px solid #00c805;background:transparent;color:#00c805;font-size:20px;line-height:1;cursor:pointer}.rhUnderlyingMarker{display:flex;align-items:center;gap:8px;color:#888;font-size:11px;padding:8px}.rhUnderlyingMarker:before,.rhUnderlyingMarker:after{content:"";height:1px;background:#272727;flex:1}.rhSideGrid{display:grid;grid-template-columns:1fr 76px 1fr}.rhSideHead,.rhSideRow{display:contents}.rhSideCell{padding:10px 8px;border-bottom:1px solid #171717}.rhSideStrike{text-align:center;color:#bdbdbd;font-weight:700}.rhSideQuote{display:flex;justify-content:space-between;gap:8px;font-size:12px}.rhSideQuote button{border:0;background:transparent;color:#00c805;font:inherit;font-weight:750;cursor:pointer;padding:0}.contractPanel{display:none}.contractPanel.active{display:block}.rhContractSheet{margin:22px auto 0;max-width:760px;border-top:1px solid #242424;padding-top:0;background:#000!important;border-left:0!important;border-right:0!important;border-bottom:0!important;border-radius:0!important}.rhSheetTop{display:flex;gap:12px;align-items:center;padding:18px 0;border-bottom:1px solid #1e1e1e}.rhBack{border:0;background:transparent;color:#fff;font-size:30px;cursor:pointer}.rhSheetTitle{font-size:20px;font-weight:800}.rhContractQuote{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-bottom:1px solid #1e1e1e}.rhContractQuote>div{padding:17px 10px;text-align:center}.rhContractQuote span{display:block;color:#777;font-size:11px}.rhContractQuote b{display:block;margin-top:5px;font-size:17px}.rhOrderBox{padding:18px 0;border-bottom:1px solid #1e1e1e}.rhOrderLine{display:flex;justify-content:space-between;align-items:center;padding:9px 0}.rhOrderInput{border:1px solid #333;background:#0d0d0d;color:#fff;border-radius:8px;padding:9px 10px;min-width:115px;font-size:16px}.rhReviewBtn{width:100%;border:0;border-radius:24px;background:#00c805;color:#000;padding:13px;font-weight:850;font-size:15px;cursor:pointer;margin-top:14px}.rhReviewTicket{border:1px solid #262626;border-radius:12px;background:#0b0b0b;padding:16px;margin:16px 0}.rhDetails,.rhResearchDrawer{border-bottom:1px solid #1d1d1d}.rhDetails summary,.rhResearchDrawer summary{padding:17px 0;font-weight:800;cursor:pointer}.rhResearchGrid{margin-top:12px}.rhResearchDrawer{margin-top:26px;border-top:1px solid #1d1d1d}.rhResearchBody{padding:4px 0 20px}.brokerShell{max-width:760px}.brokerPower{background:#0b0b0b;border-color:#242424}.brokerLine{stroke:#00c805}.brokerRange button.active{background:#062d08;color:#00c805}.brokerStats{border-color:#242424}.positionList,.positionRow,.brokerDetails{border-color:#242424}.positionRow{padding:16px 2px}.brokerEquity{font-size:42px}.brokerReturn.good{color:#00c805}.brokerReturn.bad{color:#ff5000}.workspaceHead{margin-top:28px}.hero,.guide,.snapshot{display:none!important}.foot{max-width:760px;margin:28px auto;color:#666;border-color:#1d1d1d}.bestrow{background:#061b07}.besttag{border-color:#00c805;color:#00c805}.range{accent-color:#00c805}
+@media(max-width:820px){.w{padding:0 16px 40px}.rhNav{gap:10px}.rhNavLinks{display:none}.rhSearch{max-width:none}.rhStatus{display:none}.rhRefresh{display:none}.rhAssetHead{padding-top:20px}.rhAssetPrice{font-size:34px}.rhOptionsToolbar{align-items:flex-start}.rhSegment button{padding:8px 14px}.rhContractSheet{max-width:none}.rhSideGrid{font-size:11px}}
+@media(max-width:520px){.rhBrand{font-size:18px}.rhSearch{height:36px}.rhTickerTabs{margin:0}.rhOptionRow{padding:13px 3px}.rhOptionPrice{min-width:64px}.rhAssetHead{padding-bottom:14px}.rhOptionsToolbar{flex-direction:column}.rhSegment{width:100%}.rhSegment button{flex:1}.rhContractQuote>div{padding:14px 5px}.brokerStats{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
 <body><main class="w">
-<nav class="nav">
-  <div class="brand">MarketLens <span style="color:#6fa8ff">ML</span></div>
-  <div class="search">
-    <input class="input" id="tickerInput" maxlength="8" placeholder="TSLA, NVDA, AAPL">
-    <button class="btn primary actionPrimary" onclick="analyzeTicker()">Analyze ticker</button>
-    <button class="btn" id="runBtn" onclick="runResearch()">Refresh current</button>
-    <span class="badge" id="runStatus"><span style="color:#39dfa0">●</span> Ready</span>
-    <span class="badge" id="updated">Loading…</span>
+<nav class="rhNav">
+  <div class="rhBrand">MarketLens</div>
+  <div class="rhNavLinks">
+    <button class="rhNavLink" type="button" onclick="showView('sim',document.querySelectorAll('.navtabs .tab')[2])">Investing</button>
+    <button class="rhNavLink active" type="button" onclick="showView('options',document.querySelectorAll('.navtabs .tab')[1])">Options</button>
+    <button class="rhNavLink" type="button" onclick="showView('research',document.querySelectorAll('.navtabs .tab')[0])">Research</button>
+    <button class="rhNavLink" type="button" onclick="showView('ai',document.querySelectorAll('.navtabs .tab')[3])">AI Portfolio</button>
   </div>
+  <div class="rhSearch">
+    <input class="rhSearchInput" id="tickerInput" maxlength="8" placeholder="Search stocks, ETFs">
+    <button class="rhSearchBtn" type="button" onclick="analyzeTicker()" aria-label="Search ticker">⌕</button>
+  </div>
+  <div class="rhStatus"><span id="runStatus">Ready</span><span id="updated">Loading…</span></div>
+  <button class="rhRefresh" id="runBtn" type="button" onclick="runResearch()">Refresh</button>
 </nav>
 
-<section class="hero"><h1>Research. Practice. Improve.</h1><p>Start with a ticker, understand the evidence, inspect a contract, then practice with paper money.</p></section><section class="guide"><div class="guideStep"><span class="stepNo">1</span><b>Choose a ticker</b><span class="sub">Enter SPY, TSLA, NVDA or another symbol above.</span></div><div class="guideStep"><span class="stepNo">2</span><b>Read the evidence</b><span class="sub">See what history and validation actually support.</span></div><div class="guideStep"><span class="stepNo">3</span><b>Inspect an option</b><span class="sub">Understand premium, breakeven, Greeks and risk.</span></div><div class="guideStep"><span class="stepNo">4</span><b>Practice first</b><span class="sub">Track paper P/L without risking real money.</span></div></section>
-
-<div class="navtabs">
-  <button class="tab active" onclick="showView('research',this)">Research</button>
-  <button class="tab" onclick="showView('options',this)">Options Lab</button>
-  <button class="tab" onclick="showView('sim',this)">Simulator</button>
+<div class="navtabs rhHiddenTabs" aria-hidden="true">
+  <button class="tab" onclick="showView('research',this)">Research</button>
+  <button class="tab active" onclick="showView('options',this)">Options</button>
+  <button class="tab" onclick="showView('sim',this)">Investing</button>
   <button class="tab" onclick="showView('ai',this)">AI Portfolio</button>
 </div>
-<div class="tickerTabs" id="tabs"></div><section class="snapshot"><div class="snap"><div class="label">WORKFLOW</div><strong>Research first</strong><span class="sub">Validate the setup</span></div><div class="snap"><div class="label">OPTIONS</div><strong>Compare contracts</strong><span class="sub">Breakeven + Greeks</span></div><div class="snap"><div class="label">SIMULATOR</div><strong>Practice entries</strong><span class="sub">Track realized P/L</span></div><div class="snap"><div class="label">AI PORTFOLIO</div><strong>Forward test</strong><span class="sub">Independent paper account</span></div></section>
-
-<section id="researchView" class="view active"><div class="workspaceHead"><div><h2>Research overview</h2><p class="sub">Understand the underlying before choosing a contract.</p></div><span class="statusPill"><span class="dot"></span>Research data</span></div><div class="hint"><b>Start here.</b> A high model percentage is not enough by itself. Check Decision Evidence and the out-of-sample metrics before interpreting the signal.</div>
+<div class="tickerTabs rhTickerTabs" id="tabs"></div>
+<section id="researchView" class="view"><div class="workspaceHead"><div><h2>Research overview</h2><p class="sub">Understand the underlying before choosing a contract.</p></div><span class="statusPill"><span class="dot"></span>Research data</span></div><div class="hint"><b>Start here.</b> A high model percentage is not enough by itself. Check Decision Evidence and the out-of-sample metrics before interpreting the signal.</div>
 <section class="grid">
 <div class="card"><div class="label">LATEST UNDERLYING PRICE</div><div class="value" id="price">—</div><div class="sub" id="returns">—</div><div class="sub" id="liveQuoteStatus">Scheduled snapshot</div></div>
 <div class="card"><div class="label">5-DAY UP MODEL OUTPUT</div><div class="value" id="prob">—</div><div class="sub">Model output, not a guaranteed probability</div></div>
@@ -93,35 +101,99 @@ body{background:radial-gradient(circle at 50% -20%,#10203a 0,transparent 38%),va
 <table><thead><tr><th>Model</th><th>Accuracy</th><th>F1</th><th>ROC AUC</th><th>Brier ↓</th><th>N</th></tr></thead><tbody id="metrics"></tbody></table></section>
 </section>
 
-<section id="optionsView" class="view"><div class="workspaceHead"><div><h2>Options Lab</h2><p class="sub">Compare contract economics, risk and expiration scenarios.</p></div><span class="statusPill" id="liveMarketStatus"><span class="dot"></span>Checking live market…</span></div><div class="hint"><b>Next:</b> filter calls or puts and an expiration, then choose <b>Analyze</b>. The contract panel explains what you pay, the breakeven, Greeks and scenario risk.</div>
-<section class="grid3">
-<div class="card"><div class="label">REALIZED VOL · 20D</div><div class="value" id="optRV">—</div></div>
-<div class="card"><div class="label">NEAREST ATM STRADDLE MOVE</div><div class="value" id="atmMove">—</div><div class="sub" id="atmExp">—</div></div>
-<div class="card"><div class="label">EARNINGS</div><div class="value" id="optEarnings" style="font-size:20px">—</div></div>
-</section>
-<section class="box table"><div class="label">UNDERLYING HISTORICAL DISTRIBUTION</div><div class="sub" id="optstatus">—</div>
-<table><thead><tr><th>Horizon</th><th>Positive rate</th><th>Median</th><th>10th pct</th><th>25th pct</th><th>75th pct</th><th>90th pct</th><th>1σ move</th></tr></thead><tbody id="optionsRows"></tbody></table></section>
-<section class="box" style="margin-top:12px"><div class="label">MARKET-WIDE STRONGEST CANDIDATES</div><div class="sub">Compares qualifying contracts across the deeply analyzed universe. Separate lenses prevent highest upside from being confused with highest historical profit frequency or strongest overall evidence.</div><div class="sub" id="marketWideCoverage" style="margin-top:5px"></div><div class="outlookGrid" id="marketWideLeaders" style="margin-top:10px"></div><div id="marketWideOptions" style="margin-top:12px"></div></section><section class="box returnOutlook"><div class="label">RETURN OUTLOOK · HISTORICAL REPLAY</div><div class="sub">Three research lenses for comparing option upside and risk. These are hypothetical historical replays using today's contract economics, not guaranteed future returns.</div><div class="outlookGrid" id="returnOutlook"><div class="empty">Waiting for Opportunity Radar data…</div></div></section><section class="box" id="bestOptionBox"><div class="label">FACT-BASED CONTRACT HIGHLIGHT</div><div class="sub">Loading contract screen…</div></section>
-<section class="box table">
-<div class="controls"><div><div class="label">OPTION CHAIN</div><div class="sub" id="chainNote">—</div></div>
-<select id="typeFilter" class="select" onchange="renderChain()"><option value="all">Calls + puts</option><option value="call">Calls</option><option value="put">Puts</option></select>
-<select id="expFilter" class="select" onchange="renderChain()"><option value="all">All expirations</option></select></div>
-<table><thead><tr><th></th><th>Type</th><th>Exp</th><th>DTE</th><th>Strike</th><th>Bid</th><th>Ask</th><th>Mid</th><th>IV</th><th>Delta</th><th>Gamma</th><th>Theta/day*</th><th>Vega/1pt*</th><th>Breakeven</th><th>BE move</th><th>OI</th><th>Volume</th><th>Spread</th></tr></thead><tbody id="chainRows"></tbody></table>
-</section>
-<section id="contractPanel" class="box contractPanel">
-<div class="controls"><div><div class="label">CONTRACT ANALYZER</div><div class="value" id="contractTitle" style="font-size:21px">—</div></div><select id="paperQty" class="select"><option>1</option><option>2</option><option>3</option><option>5</option><option>10</option></select><select id="paperOrderType" class="select" onchange="toggleLimit()"><option value="market">Market</option><option value="limit">Limit</option></select><input id="paperLimit" class="input" style="display:none;min-width:100px;width:110px" type="number" min="0.01" step="0.01" placeholder="Limit $"><button class="btn primary" onclick="paperTrade()">Review paper order</button></div>
-<div id="orderTicket" class="panel" style="display:none;margin-top:12px"></div>
-<div class="statline" id="contractStats"></div>
-<div class="grid2" style="margin-top:12px"><div class="panel"><div class="label">CONTRACT CHECKLIST</div><div id="contractChecks"></div></div><div class="panel"><div class="label">TRADE MATH AT EXPIRATION</div><div id="tradeMath"></div></div></div>
-<div class="grid2" style="margin-top:12px">
-<div class="panel"><div class="label">IN PLAIN ENGLISH</div><ul class="explain" id="contractExplain"></ul></div>
-<div class="panel"><div class="label">SCENARIO SIMULATOR</div>
-<div class="kv"><span>Stock move</span><span id="scMoveLabel">0%</span></div><input class="range" id="scMove" type="range" min="-20" max="20" value="0" step="1" oninput="scenario()">
-<div class="kv"><span>Days forward</span><span id="scDaysLabel">0</span></div><input class="range" id="scDays" type="range" min="0" max="30" value="0" step="1" oninput="scenario()">
-<div class="kv"><span>IV change</span><span id="scIvLabel">0 pts</span></div><input class="range" id="scIv" type="range" min="-30" max="30" value="0" step="1" oninput="scenario()">
-<div class="value" id="scenarioValue" style="font-size:22px">—</div><div class="sub" id="scenarioText">Black-Scholes estimate using current chain IV. Not a guaranteed future quote.</div>
-</div></div>
-</section>
+<section id="optionsView" class="view active">
+  <div class="rhAssetHead">
+    <div>
+      <div class="rhAssetTicker" id="rhTickerTitle">—</div>
+      <div class="rhAssetPrice" id="rhTickerPrice">—</div>
+      <div class="rhAssetMove" id="rhTickerMove">—</div>
+    </div>
+    <div class="rhMarketBadge" id="liveMarketStatus">Checking market…</div>
+  </div>
+
+  <div class="rhOptionsToolbar">
+    <div class="rhSegment" aria-label="Option side">
+      <button type="button" id="rhCallBtn" class="active" onclick="setRhType('call')">Call</button>
+      <button type="button" id="rhPutBtn" onclick="setRhType('put')">Put</button>
+    </div>
+    <div class="rhSegment" aria-label="Chain view">
+      <button type="button" id="rhFocusedBtn" class="active" onclick="setChainMode('focused')">Focused</button>
+      <button type="button" id="rhSideBtn" onclick="setChainMode('side')">Calls & puts</button>
+    </div>
+  </div>
+
+  <div class="rhExpWrap">
+    <button class="rhExpArrow" type="button" onclick="scrollExp(-1)" aria-label="Previous expirations">‹</button>
+    <div class="rhExpBar" id="rhExpBar"></div>
+    <button class="rhExpArrow" type="button" onclick="scrollExp(1)" aria-label="Next expirations">›</button>
+  </div>
+
+  <select id="typeFilter" class="select rhNativeHidden" onchange="renderChain()"><option value="call">Calls</option><option value="put">Puts</option><option value="all">Calls + puts</option></select>
+  <select id="expFilter" class="select rhNativeHidden" onchange="renderChain()"><option value="all">All expirations</option></select>
+
+  <div class="rhChainMeta">
+    <span id="chainNote">Awaiting option-chain refresh</span>
+    <button class="rhTextButton" type="button" onclick="toggleChainDetails()">Chain settings</button>
+  </div>
+
+  <section class="rhChainPanel">
+    <div id="rhFocusedHeader" class="rhChainHeader"><span>Contract</span><span>Price</span></div>
+    <div id="chainRows" class="rhChainRows"></div>
+  </section>
+
+  <section id="contractPanel" class="rhContractSheet contractPanel">
+    <div class="rhSheetTop">
+      <button class="rhBack" type="button" onclick="closeContractSheet()">‹</button>
+      <div><div class="rhSheetTitle" id="contractTitle">—</div><div class="sub">Paper simulator</div></div>
+    </div>
+    <div class="rhContractQuote">
+      <div><span>Bid</span><b id="rhBid">—</b></div>
+      <div><span>Mark</span><b id="rhMark">—</b></div>
+      <div><span>Ask</span><b id="rhAsk">—</b></div>
+    </div>
+    <div class="rhOrderBox">
+      <div class="rhOrderLine"><span>Contracts</span><select id="paperQty" class="rhOrderInput"><option>1</option><option>2</option><option>3</option><option>5</option><option>10</option></select></div>
+      <div class="rhOrderLine"><span>Order type</span><select id="paperOrderType" class="rhOrderInput" onchange="toggleLimit()"><option value="market">Market</option><option value="limit">Limit</option></select></div>
+      <div class="rhOrderLine" id="rhLimitRow" style="display:none"><span>Limit price</span><input id="paperLimit" class="rhOrderInput" type="number" min="0.01" step="0.01" placeholder="$0.00"></div>
+      <button class="rhReviewBtn" type="button" onclick="paperTrade()">Review Order</button>
+    </div>
+    <div id="orderTicket" class="rhReviewTicket" style="display:none"></div>
+
+    <details class="rhDetails" open>
+      <summary>Contract details</summary>
+      <div class="statline" id="contractStats"></div>
+    </details>
+    <div class="grid2 rhResearchGrid">
+      <div class="panel"><div class="label">MARKETLENS CHECKLIST</div><div id="contractChecks"></div></div>
+      <div class="panel"><div class="label">AT EXPIRATION</div><div id="tradeMath"></div></div>
+    </div>
+    <div class="grid2 rhResearchGrid">
+      <div class="panel"><div class="label">WHY IT MATTERS</div><ul class="explain" id="contractExplain"></ul></div>
+      <div class="panel"><div class="label">P/L SIMULATOR</div>
+        <div class="kv"><span>Stock move</span><span id="scMoveLabel">0%</span></div><input class="range" id="scMove" type="range" min="-20" max="20" value="0" step="1" oninput="scenario()">
+        <div class="kv"><span>Days forward</span><span id="scDaysLabel">0</span></div><input class="range" id="scDays" type="range" min="0" max="30" value="0" step="1" oninput="scenario()">
+        <div class="kv"><span>IV change</span><span id="scIvLabel">0 pts</span></div><input class="range" id="scIv" type="range" min="-30" max="30" value="0" step="1" oninput="scenario()">
+        <div class="value" id="scenarioValue" style="font-size:22px">—</div><div class="sub" id="scenarioText">Scenario estimate; not a guaranteed future quote.</div>
+      </div>
+    </div>
+  </section>
+
+  <details class="rhResearchDrawer">
+    <summary>MarketLens research & market-wide recommendations</summary>
+    <div class="rhResearchBody">
+      <section class="grid3">
+        <div class="card"><div class="label">REALIZED VOL · 20D</div><div class="value" id="optRV">—</div></div>
+        <div class="card"><div class="label">ATM IMPLIED MOVE</div><div class="value" id="atmMove">—</div><div class="sub" id="atmExp">—</div></div>
+        <div class="card"><div class="label">EARNINGS</div><div class="value" id="optEarnings" style="font-size:20px">—</div></div>
+      </section>
+      <section class="box table"><div class="label">UNDERLYING HISTORICAL DISTRIBUTION</div><div class="sub" id="optstatus">—</div>
+        <table><thead><tr><th>Horizon</th><th>Positive rate</th><th>Median</th><th>10th pct</th><th>25th pct</th><th>75th pct</th><th>90th pct</th><th>1σ move</th></tr></thead><tbody id="optionsRows"></tbody></table>
+      </section>
+      <section class="box"><div class="label">MARKET-WIDE STRONGEST CANDIDATES</div><div class="sub" id="marketWideCoverage"></div><div class="outlookGrid" id="marketWideLeaders"></div><div id="marketWideOptions"></div></section>
+      <section class="box returnOutlook"><div class="label">RETURN OUTLOOK · HISTORICAL REPLAY</div><div class="outlookGrid" id="returnOutlook"><div class="empty">Waiting for Opportunity Radar data…</div></div></section>
+      <section class="box" id="bestOptionBox"><div class="label">CONTRACT SCREEN</div><div class="sub">Loading…</div></section>
+    </div>
+  </details>
 </section>
 
 <section id="simView" class="view">
@@ -451,8 +523,8 @@ function showView(v,b){
   document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
   document.querySelectorAll('.navtabs .tab').forEach(x=>x.classList.remove('active'));
   document.getElementById(v+'View').classList.add('active'); if(b)b.classList.add('active');
-  if(v==='sim')renderPaper();
-  if(v==='ai')renderAI();
+  const map={sim:'Investing',options:'Options',research:'Research',ai:'AI Portfolio'};document.querySelectorAll('.rhNavLink').forEach(x=>x.classList.toggle('active',x.textContent.trim()===map[v]));
+  if(v==='sim')renderPaper();if(v==='ai')renderAI();if(v==='options'&&C)renderOptions();
 }
 async function runResearch(ticker=null){
   const b=document.getElementById('runBtn'),s=document.getElementById('runStatus');
@@ -662,16 +734,32 @@ function renderMarketWideOptions(){
 }
 function renderOptions(){
   const o=C.options||{},sum=o.summary||{},ctx=C.company_context||{},er=ctx.earnings||{};
-  optRV.textContent=pc(o.realized_vol_20d);atmMove.textContent=pc(sum.atm_straddle_implied_move);atmExp.textContent=sum.atm_expiration?('Nearest reference expiration '+sum.atm_expiration):'Awaiting chain';optEarnings.textContent=er.days_to_earnings==null?'—':er.days_to_earnings+' days';
+  const title=document.getElementById('rhTickerTitle'),rp=document.getElementById('rhTickerPrice'),rm=document.getElementById('rhTickerMove');
+  if(title)title.textContent=C.ticker||'—'; if(rp)rp.textContent=money(spotNow());
+  if(rm){const d=oneDayNow();rm.textContent=(d>=0?'+':'')+pc(d)+' today';rm.className='rhAssetMove '+(d>=0?'good':'bad')}
+  optRV.textContent=pc(o.realized_vol_20d);atmMove.textContent=pc(sum.atm_straddle_implied_move);atmExp.textContent=sum.atm_expiration?('Reference expiration '+sum.atm_expiration):'Awaiting chain';optEarnings.textContent=er.days_to_earnings==null?'—':er.days_to_earnings+' days';
   optstatus.textContent=o.status||'Awaiting options data';
   optionsRows.innerHTML=Object.entries(o.horizons||{}).map(([h,x])=>'<tr><td>'+h+' days</td><td>'+pc(x.positive_rate)+'</td><td>'+pc(x.median_return)+'</td><td>'+pc(x.p10)+'</td><td>'+pc(x.p25)+'</td><td>'+pc(x.p75)+'</td><td>'+pc(x.p90)+'</td><td>'+pc(x.realized_move_1sd)+'</td></tr>').join('');
-  const oc=o.chain||{},plist=(oc.providers||[]).map(p=>p.source+(p.feed?' ['+p.feed+']':'')).join(' + ');
-  const cc=oc.data_confidence_counts||{};
+  const oc=o.chain||{},plist=(oc.providers||[]).map(p=>p.source+(p.feed?' ['+p.feed+']':'')).join(' + '),cc=oc.data_confidence_counts||{};
   const confidenceSummary=Object.keys(cc).length?('confidence '+Object.entries(cc).map(([k,v])=>k+':'+v).join(', ')):'';
   chainNote.textContent=[plist?('Providers: '+plist):'',oc.provider_warning,confidenceSummary,oc.quote_note||oc.error||'Awaiting option-chain refresh'].filter(Boolean).join(' · ');
   expFilter.innerHTML='<option value="all">All expirations</option>'+(oc.expirations||[]).map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('');
+  renderRhExpirations(oc.expirations||[]);
   renderChain();renderReturnOutlook();renderMarketWideOptions();updateMarketStreamSymbols();
 }
+let chainMode='focused';
+function setRhType(t){typeFilter.value=t;document.getElementById('rhCallBtn').classList.toggle('active',t==='call');document.getElementById('rhPutBtn').classList.toggle('active',t==='put');if(chainMode==='side'){chainMode='focused';document.getElementById('rhFocusedBtn').classList.add('active');document.getElementById('rhSideBtn').classList.remove('active')}renderChain()}
+function setChainMode(m){chainMode=m;document.getElementById('rhFocusedBtn').classList.toggle('active',m==='focused');document.getElementById('rhSideBtn').classList.toggle('active',m==='side');if(m==='side')typeFilter.value='all';else if(typeFilter.value==='all')typeFilter.value='call';renderChain()}
+function renderRhExpirations(exps){
+ const bar=document.getElementById('rhExpBar');if(!bar)return;const selected=expFilter.value;
+ bar.innerHTML=(exps||[]).map((x,i)=>'<button type="button" class="rhExpBtn '+((selected==='all'&&i===0)||selected===x?'active':'')+'" data-exp="'+esc(x)+'">'+(i===0?'Today · ':'')+formatRhExp(x)+'</button>').join('');
+ bar.querySelectorAll('.rhExpBtn').forEach(b=>b.addEventListener('click',()=>{expFilter.value=b.dataset.exp;bar.querySelectorAll('.rhExpBtn').forEach(x=>x.classList.remove('active'));b.classList.add('active');renderChain()}));
+ if(selected==='all'&&exps&&exps[0])expFilter.value=exps[0];
+}
+function formatRhExp(x){try{return new Date(x+'T12:00:00Z').toLocaleDateString(undefined,{month:'short',day:'numeric',timeZone:'UTC'})}catch(e){return x}}
+function scrollExp(dir){const b=document.getElementById('rhExpBar');if(b)b.scrollBy({left:dir*240,behavior:'smooth'})}
+function toggleChainDetails(){const d=document.querySelector('.rhResearchDrawer');if(d)d.open=!d.open}
+function closeContractSheet(){contractPanel.classList.remove('active');selectedContract=null}
 function contractScore(x){
  if(!x||!x.mid||x.mid<=0||x.dte==null||Number(x.dte)<1||x.bid==null||x.ask==null||Number(x.bid)<=0||Number(x.ask)<=0||Number(x.ask)<Number(x.bid))return null;
  const spread=x.spread_pct==null?1:Number(x.spread_pct),oi=Number(x.open_interest||0),v=Number(x.volume||0),theta=Math.abs(Number(x.theta_cost_pct_per_day||0)),be=Math.abs(Number(x.breakeven_move||0)),ivr=Number(x.iv_rv_ratio||1),dte=Number(x.dte||0);
@@ -679,18 +767,39 @@ function contractScore(x){
  return {score:liquidity+execution+decay+volatility+breakeven+time,parts:['liquidity '+liquidity+'/25','execution '+execution+'/20','decay '+decay+'/20','IV/RV '+volatility+'/15','breakeven '+breakeven+'/12','time '+time+'/8']};
 }
 function renderChain(){
- const oc=(C.options||{}).chain||{},typ=typeFilter.value,exp=expFilter.value;let rows=(oc.contracts||[]).filter(x=>(typ==='all'||x.type===typ)&&(exp==='all'||x.expiration===exp));
+ const oc=(C.options||{}).chain||{},typ=typeFilter.value,exp=expFilter.value,all=oc.contracts||[];
+ let rows=all.filter(x=>(exp==='all'||x.expiration===exp));
  const ranked=rows.map(x=>({x,r:contractScore(x)})).filter(z=>z.r).sort((a,b)=>b.r.score-a.r.score),best=ranked[0];
- if(best){const x=best.x,r=best.r;window._bestContract=x;bestOptionBox.innerHTML='<div class="label">FACT-BASED CONTRACT HIGHLIGHT</div><div class="value" style="font-size:20px">'+esc(C.ticker)+' '+esc(x.expiration)+' '+money(x.strike)+' '+esc(x.type.toUpperCase())+' <span class="besttag">TOP SCREEN '+r.score+'/100</span></div><div class="sub">Ranks contract mechanics only: liquidity, spread, modeled decay, IV versus realized volatility, breakeven distance and time to expiration. It is a heuristic mechanics screen, not validated alpha, and it does not decide market direction or tell you to buy. '+esc(r.parts.join(' · '))+'</div><button class="btn" style="margin-top:9px" onclick="selectBestContract()">Analyze highlighted contract</button>';}else bestOptionBox.innerHTML='<div class="label">FACT-BASED CONTRACT HIGHLIGHT</div><div class="sub">No contract currently passes the screen.</div>';
- chainRows.innerHTML=rows.slice(0,120).map(x=>{const isBest=best&&x===best.x;return '<tr class="'+(isBest?'bestrow':'')+'"><td>'+(isBest?'<span class="besttag">TOP SCREEN</span> ':'')+'<button class="btn" onclick="selectContractFromButton(this)">Analyze</button></td><td>'+x.type+'</td><td>'+x.expiration+'</td><td>'+x.dte+'</td><td>'+money(x.strike)+'</td><td>'+money(x.bid)+'</td><td>'+money(x.ask)+'</td><td>'+money(x.mid)+'</td><td>'+pc(x.iv)+'</td><td>'+num(x.delta,3)+'</td><td>'+num(x.gamma,4)+'</td><td>'+money(x.theta_per_contract_per_day)+'</td><td>'+money(x.vega_per_contract_per_vol_point)+'</td><td>'+money(x.breakeven)+'</td><td>'+pc(x.breakeven_move)+'</td><td>'+x.open_interest+'</td><td>'+x.volume+'</td><td>'+pc(x.spread_pct)+'</td></tr>'}).join('');
+ if(best){const x=best.x,r=best.r;window._bestContract=x;bestOptionBox.innerHTML='<div class="label">TOP CONTRACT MECHANICS</div><div class="value" style="font-size:20px">'+esc(C.ticker)+' '+esc(x.expiration)+' '+money(x.strike)+' '+esc(x.type.toUpperCase())+' <span class="besttag">'+r.score+'/100</span></div><div class="sub">'+esc(r.parts.join(' · '))+'</div><button class="btn" style="margin-top:9px" onclick="selectBestContract()">Open contract</button>'}else bestOptionBox.innerHTML='<div class="label">CONTRACT SCREEN</div><div class="sub">No contract currently passes the mechanics screen.</div>';
+ const root=document.getElementById('chainRows');if(!root)return;
+ if(chainMode==='side'){
+   const calls=new Map(rows.filter(x=>x.type==='call').map(x=>[Number(x.strike),x])),puts=new Map(rows.filter(x=>x.type==='put').map(x=>[Number(x.strike),x]));
+   const strikes=[...new Set([...calls.keys(),...puts.keys()])].sort((a,b)=>b-a).slice(0,80);
+   root.className='rhChainRows rhSideGrid';
+   root.innerHTML='<div class="rhSideCell"><b>Calls</b><div class="rhOptionSub">Bid · Ask</div></div><div class="rhSideCell rhSideStrike">Strike</div><div class="rhSideCell"><b>Puts</b><div class="rhOptionSub">Bid · Ask</div></div>'+
+   strikes.map(k=>{const ca=calls.get(k),pu=puts.get(k);return '<div class="rhSideCell">'+sideQuote(ca)+'</div><div class="rhSideCell rhSideStrike">'+money(k)+'</div><div class="rhSideCell">'+sideQuote(pu)+'</div>'}).join('');
+   return;
+ }
+ root.className='rhChainRows';
+ const filtered=rows.filter(x=>x.type===typ).sort((a,b)=>Number(b.strike)-Number(a.strike)).slice(0,100),spot=spotNow();
+ let marked=false,html='';
+ filtered.forEach(x=>{
+   if(!marked&&Number(x.strike)<=spot){html+='<div class="rhUnderlyingMarker">Share price '+money(spot)+'</div>';marked=true}
+   const premium=(x.ask&&Number(x.ask)>0)?Number(x.ask):Number(x.mid||0),toBE=x.breakeven_move==null?'—':pc(Math.abs(x.breakeven_move));
+   html+='<div class="rhOptionRow" data-sym="'+esc(x.contract_symbol||'')+'" data-strike="'+x.strike+'" data-type="'+esc(x.type)+'" data-exp="'+esc(x.expiration)+'"><div class="rhOptionMain"><div class="rhOptionTitle">'+money(x.strike)+' '+(x.type==='call'?'Call':'Put')+'</div><div class="rhOptionSub">Breakeven '+money(x.breakeven)+' · '+toBE+' to breakeven · '+Number(x.dte||0)+'D</div></div><div class="rhOptionPriceWrap"><div><div class="rhOptionPrice">'+money(premium)+'</div><div class="rhOptionSub right">'+(x.volume||0).toLocaleString()+' vol</div></div><button class="rhOptionAdd" type="button" aria-label="Select contract">+</button></div></div>';
+ });
+ root.innerHTML=html||'<div class="empty">No contracts available for this expiration.</div>';
+ root.querySelectorAll('.rhOptionRow').forEach(row=>row.addEventListener('click',()=>selectContract(row.dataset.sym,Number(row.dataset.strike),row.dataset.type,row.dataset.exp)));
 }
+function sideQuote(x){if(!x)return '<span class="rhOptionSub">—</span>';return '<div class="rhSideQuote"><button type="button" onclick="selectContract(\''+esc(x.contract_symbol||'')+'\','+Number(x.strike)+',\''+esc(x.type)+'\',\''+esc(x.expiration)+'\')">'+money(x.bid)+'</button><button type="button" onclick="selectContract(\''+esc(x.contract_symbol||'')+'\','+Number(x.strike)+',\''+esc(x.type)+'\',\''+esc(x.expiration)+'\')">'+money(x.ask)+'</button></div>'}
 function selectBestContract(){const x=window._bestContract;if(x)selectContract(x.contract_symbol||"",x.strike,x.type,x.expiration)}
 function selectContractFromButton(btn){const tr=btn.closest("tr");if(!tr)return;const cells=tr.children;selectContract("",Number(String(cells[4].textContent).replace(/[$,]/g,"")),cells[1].textContent.trim(),cells[2].textContent.trim())}
 function selectContract(sym,strike,type,exp){
   const rows=(((C.options||{}).chain||{}).contracts||[]);
   selectedContract=rows.find(x=>(sym&&x.contract_symbol===sym)||(!sym&&x.strike===strike&&x.type===type&&x.expiration===exp));
   if(!selectedContract)return;contractPanel.classList.add('active');startLiveOptionPolling();
-  const x=selectedContract;contractTitle.textContent=C.ticker+' '+x.expiration+' '+money(x.strike)+' '+x.type.toUpperCase();
+  const x=selectedContract;contractTitle.textContent=C.ticker+' '+money(x.strike)+' '+x.type.toUpperCase()+' · '+formatRhExp(x.expiration);
+  const rb=document.getElementById('rhBid'),rm=document.getElementById('rhMark'),ra=document.getElementById('rhAsk');if(rb)rb.textContent=money(x.bid);if(rm)rm.textContent=money(x.mid);if(ra)ra.textContent=money(x.ask);
   contractStats.innerHTML=[
     ['Bid',money(x.bid)],['Ask',money(x.ask)],['Premium mid',money(x.mid)],['Breakeven',money(x.breakeven)],['IV',pc(x.iv)],
     ['Delta',num(x.delta,3)],['Theta/day',money(x.theta_per_contract_per_day)],['Vega/1pt',money(x.vega_per_contract_per_vol_point)],['Spread',pc(x.spread_pct)],['Open interest',x.open_interest],
@@ -761,7 +870,7 @@ function paperQuoteFor(p){
  return lookupContract(p);
 }
 function paperState(){try{const s=JSON.parse(localStorage.getItem('marketlens_paper_v1'))||{};return{open:s.open||[],closed:s.closed||[],pending:s.pending||[],equityHistory:s.equityHistory||[]}}catch(e){return{open:[],closed:[],pending:[],equityHistory:[]}}}
-function toggleLimit(){paperLimit.style.display=paperOrderType.value==='limit'?'block':'none';if(paperOrderType.value==='limit'&&selectedContract)paperLimit.value=num(selectedContract.mid,2)}
+function toggleLimit(){const on=paperOrderType.value==='limit',row=document.getElementById('rhLimitRow');paperLimit.style.display=on?'block':'none';if(row)row.style.display=on?'flex':'none';if(on&&selectedContract)paperLimit.value=num(selectedContract.mid,2)}
 function savePaper(s){localStorage.setItem('marketlens_paper_v1',JSON.stringify(s))}
 function paperBuyingPower(s){
  let cash=10000;
@@ -846,34 +955,21 @@ function renderPaperValidation(s){
 }
 function paperTrade(){
  if(!selectedContract||!C)return;
- const x=selectedContract,s=paperState(),qty=Math.max(1,Number(paperQty.value||1)),orderType=paperOrderType.value;
- const market=(x.ask&&x.ask>0)?Number(x.ask):0;
- const limit=orderType==='limit'?Number(paperLimit.value||0):null;
- const price=orderType==='limit'?limit:market;
+ const x=selectedContract,s=paperState(),qty=Math.max(1,Number(paperQty.value||1)),orderType=paperOrderType.value,market=(x.ask&&x.ask>0)?Number(x.ask):0,limit=orderType==='limit'?Number(paperLimit.value||0):null,price=orderType==='limit'?limit:market;
  if(!price||price<=0){runStatus.textContent='Enter a usable order price';return}
- const maxCost=price*100*qty,buying=paperBuyingPower(s),ev=paperEvidenceSnapshot(x);
- if(maxCost>buying){runStatus.textContent='Paper order exceeds buying power';return}
- pendingReview={id:Date.now(),ticker:C.ticker,type:x.type,strike:x.strike,expiration:x.expiration,contract_symbol:x.contract_symbol||'',qty,
-  entry_spot:spotNow(),entry_iv:x.iv,entry_delta:x.delta,entry_theta:x.theta_per_contract_per_day,entry_vega:x.vega_per_contract_per_vol_point,
-  entry_spread_pct:x.spread_pct,entry_model_output:C.probability_5d_up,entry_model_auc:(C.evidence||{}).mean_roc_auc,
-  entry_evidence:(C.evidence||{}).state||null,entry_dte:x.dte,order_type:orderType,requested_price:price,...ev};
- const ci=ev.entry_profit_frequency_ci95||[null,null],verified=ev.entry_execution_verified===true;
- orderTicket.style.display='block';
- orderTicket.innerHTML='<div class="label">REVIEW ORDER · PAPER TRADE</div>'+
-  '<div class="kv"><span>Contract</span><b>'+esc(C.ticker+' '+x.expiration+' '+x.strike+' '+String(x.type).toUpperCase())+'</b></div>'+
-  '<div class="kv"><span>Quantity</span><b>'+qty+'</b></div>'+
-  '<div class="kv"><span>Order</span><b>'+esc(orderType==='limit'?'Limit @ '+money(limit):'Market @ quoted ask')+'</b></div>'+
-  '<div class="kv"><span>Estimated maximum debit</span><b>'+money(maxCost)+'</b></div>'+
-  '<div class="kv"><span>All-data evidence</span><b>'+num(ev.entry_combined_evidence_score,1)+'/100</b></div>'+
-  '<div class="kv"><span>Robust historical mean return</span><b>'+pc(ev.entry_historical_trimmed_mean_return!=null?ev.entry_historical_trimmed_mean_return:ev.entry_historical_mean_return)+'</b></div>'+
-  '<div class="kv"><span>Raw historical mean return</span><b>'+pc(ev.entry_historical_mean_return)+'</b></div>'+
-  '<div class="kv"><span>Historical profit frequency</span><b>'+pc(ev.entry_profit_frequency)+(ci[0]!=null&&ci[1]!=null?' · 95% '+pc(ci[0])+'–'+pc(ci[1]):'')+'</b></div>'+
-  '<div class="kv"><span>Historical full-loss frequency</span><b>'+pc(ev.entry_full_premium_loss_frequency)+'</b></div>'+
-  '<div class="kv"><span>Execution data</span><b class="'+(verified?'good':'warn')+'">'+esc(verified?'Verified live':'Research/snapshot only')+'</b></div>'+
-  '<div class="kv"><span>Provider / confidence</span><b>'+esc((ev.entry_market_data_provider||'—')+' / '+(ev.entry_market_data_confidence||'unknown'))+'</b></div>'+
-  '<div class="kv"><span>Buying power after fill</span><b>'+money(buying-maxCost)+'</b></div>'+
-  '<div class="sub" style="margin-top:10px">This paper order preserves the pre-entry evidence so realized results can be compared with what MarketLens estimated at the time.</div>'+
-  '<div style="margin-top:12px;display:flex;gap:8px"><button class="btn primary" onclick="submitPaperOrder()">Simulate Buy</button><button class="btn" onclick="orderTicket.style.display=\'none\';pendingReview=null">Cancel</button></div>';
+ const maxCost=price*100*qty,buying=paperBuyingPower(s),ev=paperEvidenceSnapshot(x);if(maxCost>buying){runStatus.textContent='Paper order exceeds buying power';return}
+ pendingReview={id:Date.now(),ticker:C.ticker,type:x.type,strike:x.strike,expiration:x.expiration,contract_symbol:x.contract_symbol||'',qty,entry_spot:spotNow(),entry_iv:x.iv,entry_delta:x.delta,entry_theta:x.theta_per_contract_per_day,entry_vega:x.vega_per_contract_per_vol_point,entry_spread_pct:x.spread_pct,entry_model_output:C.probability_5d_up,entry_model_auc:(C.evidence||{}).mean_roc_auc,entry_evidence:(C.evidence||{}).state||null,entry_dte:x.dte,order_type:orderType,requested_price:price,...ev};
+ orderTicket.style.display='block';orderTicket.innerHTML='<div class="rhSheetTitle">Review Order</div>'+
+  '<div class="kv"><span>'+esc(C.ticker)+' '+money(x.strike)+' '+esc(String(x.type).toUpperCase())+'</span><b>'+formatRhExp(x.expiration)+'</b></div>'+
+  '<div class="kv"><span>Contracts</span><b>'+qty+'</b></div>'+
+  '<div class="kv"><span>Order type</span><b>'+esc(orderType==='limit'?'Limit':'Market')+'</b></div>'+
+  '<div class="kv"><span>Price</span><b>'+money(price)+'</b></div>'+
+  '<div class="kv"><span>Estimated cost</span><b>'+money(maxCost)+'</b></div>'+
+  '<div class="kv"><span>Maximum loss</span><b>'+money(maxCost)+'</b></div>'+
+  '<div class="kv"><span>Buying power after</span><b>'+money(buying-maxCost)+'</b></div>'+
+  '<div class="kv"><span>MarketLens evidence</span><b>'+num(ev.entry_combined_evidence_score,1)+'/100</b></div>'+
+  '<div class="sub" style="margin:12px 0">Simulation only. No brokerage order will be sent.</div>'+
+  '<button class="rhReviewBtn" type="button" onclick="submitPaperOrder()">Simulate Buy</button><button class="btn" style="width:100%;margin-top:8px" type="button" onclick="orderTicket.style.display=\'none\';pendingReview=null">Cancel</button>';
 }
 function submitPaperOrder(){
  if(!pendingReview)return;
