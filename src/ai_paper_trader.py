@@ -228,7 +228,7 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
             guided=[x for x in guided if x]
         candidate_rows=[]
         seen_guided=set()
-        for row in guided+(radar.get("opportunities") or []):
+        for row in guided+(radar.get("autonomous_candidates") or [])+(radar.get("opportunities") or []):
             k=contract_key(row)
             if k in seen_guided:
                 continue
