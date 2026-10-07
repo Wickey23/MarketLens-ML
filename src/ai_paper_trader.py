@@ -8,7 +8,7 @@ import json
 
 STARTING_CASH = 10000.0
 STATE_PATH = Path("data/ai_paper_portfolio.json")
-CURRENT_STRATEGY_VERSION = "v3_realtime_session"
+CURRENT_STRATEGY_VERSION = "v4_autonomous_research_live"
 MARKET_TZ = ZoneInfo("America/New_York")
 
 def load_state(path=STATE_PATH):
@@ -123,12 +123,12 @@ def days_to_expiry(expiration, today):
     except Exception:
         return None
 
-def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.02,min_score=75.0,min_dte=3,max_dte=45,max_spread=.20,max_theta_pct=.03,max_quote_age_hours=1.0,now_dt=None):
-    """Rule-based autonomous PAPER portfolio driven only by MarketLens research.
+def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.02,min_score=75.0,min_dte=21,max_dte=120,max_spread=.15,max_theta_pct=.025,max_quote_age_hours=(1/60),now_dt=None):
+    """Autonomous PAPER portfolio driven by MarketLens research and live quotes.
 
-    The current strategy never places a brokerage order, requires a real-time
-    option-chain source for new entries, and only simulates normal entries/exits
-    during a conservative regular-market execution window.
+    It never submits brokerage orders. The agent independently chooses, sizes,
+    monitors and exits simulated long calls/puts, while requiring execution-grade
+    quotes for new entries and recording every decision for forward validation.
     """
     state=state or load_state()
     now_dt=now_dt or datetime.now(timezone.utc)
@@ -174,10 +174,22 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
             # remain stuck in a same-day-expiry contract indefinitely.
             reason="time_risk"
         elif p.get("strategy_version") in ("v2_conservative",CURRENT_STRATEGY_VERSION):
-            if remaining is not None and remaining<=1:
+            if remaining is not None and remaining<=7:
                 reason="time_risk"
-            elif pnl_pct is not None and pnl_pct>=.25 and remaining is not None and remaining<=3:
+            elif pnl_pct is not None and pnl_pct>=.30 and remaining is not None and remaining<=14:
                 reason="profit_protection"
+            else:
+                t=tickers.get(p["ticker"]) or {}
+                g=(((t.get("options") or {}).get("opportunity_radar") or {}).get("guidance") or {})
+                live_rows=[g.get("best_overall"),g.get("higher_probability"),g.get("highest_upside")]
+                current=next((x for x in live_rows if x and contract_key(x)==p["contract_key"]),None)
+                if current is not None:
+                    current_score=float(current.get("combined_evidence_score") or current.get("score") or 0)
+                    news_pts=float(((current.get("all_data_components") or {}).get("news_context_points") or 0))
+                    if current_score<60:
+                        reason="research_deterioration"
+                    elif news_pts<=-2.0:
+                        reason="news_thesis_break"
         can_execute=reason=="expiration" or market_session_open
         p["exit_signal"]=(reason if can_execute else f"{reason}_waiting_market") if reason else "hold"
         if reason and mark is not None and can_execute:
@@ -210,8 +222,18 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
         chain_realtime=chain_obj.get("realtime") is True
         cmap={contract_key(x):x for x in chain}
         guidance=(radar.get("guidance") or {})
-        guided=guidance.get("best_overall") if guidance.get("state")=="strong_candidates" else None
-        candidate_rows=[guided] if guided else (radar.get("opportunities") or [])
+        guided=[]
+        if guidance.get("state")=="strong_candidates":
+            guided=[guidance.get("best_overall"),guidance.get("higher_probability"),guidance.get("highest_upside")]
+            guided=[x for x in guided if x]
+        candidate_rows=[]
+        seen_guided=set()
+        for row in guided+(radar.get("opportunities") or []):
+            k=contract_key(row)
+            if k in seen_guided:
+                continue
+            seen_guided.add(k)
+            candidate_rows.append(row)
         for r in candidate_rows:
             key=contract_key(r)
             q=cmap.get(key)
@@ -275,6 +297,9 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
         pos={"id":f"{now}:{key}","ticker":ticker,"contract_key":key,"type":q["type"],
              "strike":q["strike"],"expiration":q["expiration"],"qty":qty,
              "entry_price":entry,"entry_cost":cost,"opened_at":now,"entry_score":score,"entry_combined_evidence_score":r.get("combined_evidence_score"),
+             "entry_news_context_points":((r.get("all_data_components") or {}).get("news_context_points")),
+             "entry_news_signal_score":((r.get("all_data_components") or {}).get("news_signal_score")),
+             "entry_news_signal_confidence":((r.get("all_data_components") or {}).get("news_signal_confidence")),
              "entry_dte":q.get("dte"),"entry_iv":q.get("iv"),"entry_iv_rv_ratio":q.get("iv_rv_ratio"),
              "entry_spread_pct":q.get("spread_pct"),"entry_theta_cost_pct_per_day":q.get("theta_cost_pct_per_day"),
              "entry_regime":t.get("regime"),"entry_model_auc":(t.get("evidence") or {}).get("mean_roc_auc"),
@@ -325,6 +350,22 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
     state["paper_market_session_open"]=market_session_open
     state["market_clock_state"]=clock_state or "local_fallback"
     state["last_processed_snapshot"]=snapshot_id
+    state["autonomous"]=True
+    state["autonomous_policy"]={
+        "strategy_version":CURRENT_STRATEGY_VERSION,
+        "paper_only":True,
+        "max_positions":max_positions,
+        "risk_per_trade":risk_per_trade,
+        "min_score":min_score,
+        "min_dte":min_dte,
+        "max_dte":max_dte,
+        "max_spread":max_spread,
+        "max_theta_pct_per_day":max_theta_pct,
+        "max_quote_age_seconds":max_quote_age_hours*3600,
+        "requires_execution_realtime":True,
+        "entry_source":"MarketLens Opportunity Radar",
+        "exit_rules":["profit_target","risk_limit","research_deterioration","news_thesis_break","profit_protection","time_risk","expiration"],
+    }
     return state
 
 def performance_summary(state):
