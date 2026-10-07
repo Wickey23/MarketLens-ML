@@ -1288,7 +1288,10 @@ function renderAIRuntimeStatus(a){
  const open=((a||{}).open||[]).filter(p=>!a.strategy_version||p.strategy_version===a.strategy_version).length;
  const clock=(P.market_clock||{}).state||'unknown';
  let title='SCANNING — NO QUALIFYING SETUP',detail='MarketLens is evaluating the current universe and will stay in cash unless a contract clears every entry rule.',cls='warn';
- if(execContracts===0){title='WAITING FOR EXECUTION-GRADE OPTIONS DATA';detail='No fresh consolidated real-time option contracts are available to the current strategy. Research continues, but autonomous entries are blocked.';cls='warn'}
+ const runtime=P.autonomous_runtime||{},providerErrors=runtime.provider_errors||[];
+ const tradier401=providerErrors.some(x=>x.provider==='Tradier'&&String(x.error||'').includes('401'));
+ if(tradier401){title='TRADIER AUTHENTICATION FAILED';detail='Tradier is returning HTTP 401, so MarketLens cannot obtain execution-grade stock/options quotes. Replace the configured credential with the active Tradier Brokerage production API token; autonomous entries remain blocked until live quotes authenticate.';cls='bad'}
+ else if(execContracts===0){title='WAITING FOR EXECUTION-GRADE OPTIONS DATA';detail='No fresh consolidated real-time option contracts are available to the current strategy. Research continues, but autonomous entries are blocked.';cls='warn'}
  else if(clock&&clock!=='open'&&clock!=='unknown'&&clock!=='unconfigured'){title='MARKET SESSION NOT OPEN';detail='Research continues while autonomous paper fills wait for the regular market session. Current market-clock state: '+clock+'.';cls='warn'}
  else if(open>0){title='AI PAPER POSITION ACTIVE';detail=open+' current-strategy paper position'+(open===1?' is':'s are')+' being monitored with bid-based marks and exit rules.';cls='good'}
  else if(strong){title='STRONG RESEARCH CANDIDATE FOUND';detail='A contract clears the research gates. The AI still requires live execution data, market-session eligibility, sizing and risk checks before a paper entry.';cls='good'}
