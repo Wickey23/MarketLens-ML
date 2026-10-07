@@ -56,6 +56,8 @@ body{background:#000;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Se
 @media(max-width:760px){.bestTradeCard{grid-template-columns:1fr 1fr}.bestTradeActions{grid-column:1/-1;flex-direction:row}.bestTradeActions button{flex:1}.bestTradesOverlay{padding:8px}.bestTradesModal{margin:18px auto}.bestTradesHead{padding:18px 16px}.bestTradesList{padding:0 12px 12px}.tradeBell{width:36px;height:36px}}
 
 .researchMetaBar{display:flex;gap:10px;flex-wrap:wrap;padding:10px 0 14px;color:#7d7d7d;font-size:11px}.researchMetaBar span{border:1px solid #252525;border-radius:999px;padding:6px 9px;background:#090909}.marketVerdict{margin-top:12px;border:1px solid #262626;border-radius:14px;padding:18px;background:#080808}.verdictGrid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px}.verdictGrid>div{padding:14px;border:1px solid #202020;border-radius:12px;background:#0c0c0c}.verdictLabel{font-size:11px;color:#777;margin-bottom:5px}.verdictState{font-size:22px;font-weight:850;letter-spacing:-.4px}.verdictTrade{margin-top:14px}.verdictTradeCard{display:flex;justify-content:space-between;gap:18px;align-items:center;border:1px solid #213221;background:#071007;border-radius:12px;padding:14px}.verdictTradeTitle{font-size:17px;font-weight:850}.verdictTradeMeta{font-size:11px;color:#8a8a8a;margin-top:4px}.verdictTradeActions{display:flex;gap:8px}.verdictTradeActions button{border-radius:18px;padding:8px 12px;font-weight:800;cursor:pointer}.verdictTradePrimary{border:0;background:#00c805;color:#000}.verdictTradeSecondary{border:1px solid #333;background:#111;color:#fff}.verdictChange{margin-top:14px;padding-top:12px;border-top:1px solid #1f1f1f}.modelAgreementNote{margin-top:4px;color:#8b8b8b;font-size:10px}@media(max-width:700px){.verdictGrid{grid-template-columns:1fr}.verdictTradeCard{display:block}.verdictTradeActions{margin-top:12px}}
+
+.replayBox summary{display:flex;justify-content:space-between;gap:12px;align-items:center;cursor:pointer;list-style:none}.replayBox summary::-webkit-details-marker{display:none}.replayControls{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}.replayControls label span{display:block;color:#777;font-size:11px;margin-bottom:5px}.replayControls .select{width:100%;max-width:100%}@media(max-width:620px){.replayControls{grid-template-columns:1fr}}
 </style>
 </head>
 <body><main class="w">
@@ -271,9 +273,15 @@ body{background:#000;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Se
       <table><thead><tr><th>Ticker</th><th>Contract</th><th>Opened</th><th>Entry</th><th>Current exit mark</th><th>P/L</th><th>Underlying</th><th>Underlying move</th><th>Entry context</th><th></th></tr></thead><tbody id="paperOpen"></tbody></table></section>
       <section class="box table"><div class="label">CLOSED PAPER POSITIONS</div>
       <table><thead><tr><th>Ticker</th><th>Contract</th><th>Entry</th><th>Exit</th><th>P/L</th><th>Realized return</th><th>Hist. mean at entry</th><th>Profit freq. at entry</th><th>Evidence</th><th>Opened</th><th>Closed</th></tr></thead><tbody id="paperClosed"></tbody></table></section>
-      <section class="box" style="margin-top:12px"><div class="label">HISTORICAL REPLAY · UNDERLYING ONLY</div><div class="sub">Inspect what happened after an earlier date. Exact option replay still requires historical chain data.</div>
-      <div class="controls" style="margin-top:10px"><select class="select" id="replayDate" onchange="replay()"></select><select class="select" id="replayH" onchange="replay()"><option value="5">5 days</option><option value="10">10 days</option><option value="20">20 days</option><option value="30">30 days</option></select></div>
-      <div class="value" id="replayResult" style="font-size:20px">—</div><div class="sub" id="replayText">—</div></section>
+      <details class="box replayBox" style="margin-top:12px">
+      <summary><span class="label">HISTORICAL REPLAY · UNDERLYING ONLY</span><span class="sub">Optional research tool</span></summary>
+      <div class="sub" style="margin-top:10px">Inspect what happened after an earlier date. Exact option replay still requires historical chain data.</div>
+      <div class="replayControls">
+        <label><span>Date</span><select class="select" id="replayDate" onchange="replay()"></select></label>
+        <label><span>Horizon</span><select class="select" id="replayH" onchange="replay()"><option value="5">5 trading days</option><option value="10">10 trading days</option><option value="20">20 trading days</option><option value="30">30 trading days</option></select></label>
+      </div>
+      <div class="value" id="replayResult" style="font-size:20px;margin-top:12px">—</div><div class="sub" id="replayText">—</div>
+      </details>
     </div>
   </details>
 </div>
@@ -569,27 +577,20 @@ function showView(v,b){
 }
 async function runResearch(ticker=null){
   const b=document.getElementById('runBtn'),s=document.getElementById('runStatus');
-  b.disabled=true;s.textContent='Refreshing…';
+  b.disabled=true;s.textContent='Refreshing live data…';
   const t=ticker || (C&&C.ticker) || '';
-  let dispatched=false;
-  try{
-    const r=await controlledFetch('/api/run-research',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticker:t})});
-    const j=await r.json().catch(()=>({}));
-    if(r.ok){dispatched=true;s.textContent='Full research refresh queued ✓'}
-    else if(r.status===503 && (j.error||'').includes('Server trigger is not configured')){
-      s.textContent='Refreshing live market data…';
-    }else if(r.status===401){
-      s.textContent=j.error||'Control authorization required';
-    }else{
-      s.textContent=j.error||'Using scheduled research refresh';
-    }
-  }catch(e){s.textContent='Refreshing latest available data…'}
   try{
     await reloadData(t||null);
-    if(C){await refreshLiveQuote();await refreshLiveOptions();}
-    s.textContent=dispatched?'Research queued · live data refreshed ✓':'Live data refreshed · full research runs automatically every 5 min';
-  }catch(e){s.textContent=dispatched?'Research queued':'Latest research will refresh automatically'}
-  finally{setTimeout(()=>b.disabled=false,1500)}
+    if(C){
+      await refreshLiveQuote();
+      await refreshLiveOptions();
+    }
+    s.textContent='Live data refreshed ✓ · full research updates automatically';
+  }catch(e){
+    s.textContent='Latest research will refresh automatically';
+  }finally{
+    setTimeout(()=>{b.disabled=false;s.textContent='Ready'},2200);
+  }
 }
 function analyzeTicker(){
   const t=tickerInput.value.trim().toUpperCase();
@@ -1205,7 +1206,9 @@ function closePaper(id){
 }
 function resetPaper(){if(confirm('Reset all paper-trading history in this browser?')){localStorage.removeItem(PAPER_STATE_KEY);localStorage.removeItem(PAPER_BACKUP_KEY);PAPER_LEGACY_KEYS.forEach(k=>localStorage.removeItem(k));renderPaper()}}
 function renderReplay(){
- const h=C.history||[];replayDate.innerHTML=h.slice(0,-30).reverse().map(x=>'<option value="'+x.date+'">'+x.date+'</option>').join('');replay();
+ const h=C.history||[],eligible=h.slice(0,-30).slice(-90).reverse();
+ replayDate.innerHTML=eligible.map(x=>'<option value="'+x.date+'">'+x.date+'</option>').join('');
+ if(eligible.length)replay();
 }
 function replay(){
  if(!C||!replayDate.value)return;const h=C.history||[],i=h.findIndex(x=>x.date===replayDate.value),n=Number(replayH.value);if(i<0||i+n>=h.length){replayResult.textContent='Not enough subsequent data';replayText.textContent='Choose an earlier date.';return}
