@@ -123,7 +123,7 @@ def days_to_expiry(expiration, today):
     except Exception:
         return None
 
-def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.02,min_score=75.0,min_dte=21,max_dte=120,max_spread=.15,max_theta_pct=.025,max_quote_age_hours=(1/60),now_dt=None):
+def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.05,max_premium_fraction=.15,stop_loss_fraction=.35,min_score=75.0,min_dte=21,max_dte=120,max_spread=.15,max_theta_pct=.025,max_quote_age_hours=(1/60),now_dt=None):
     """Autonomous PAPER portfolio driven by MarketLens research and live quotes.
 
     It never submits brokerage orders. The agent independently chooses, sizes,
@@ -286,13 +286,25 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
         if not entry or entry<=0:
             continue
         equity=state["cash"]+sum(valuation_mark(p,tickers)*100*p["qty"] for p in state["open"])
-        budget=min(state["cash"],equity*risk_per_trade)
-        qty=int(budget//(entry*100))
         key=contract_key(q)
+        premium_per_contract=entry*100
+        planned_loss_per_contract=premium_per_contract*stop_loss_fraction
+        risk_budget=min(state["cash"],equity*risk_per_trade)
+        premium_cap=min(state["cash"],equity*max_premium_fraction)
+        qty_by_risk=int(risk_budget//planned_loss_per_contract) if planned_loss_per_contract>0 else 0
+        qty_by_premium=int(premium_cap//premium_per_contract) if premium_per_contract>0 else 0
+        qty=max(0,min(qty_by_risk,qty_by_premium))
         if qty<1:
-            state["decisions"].append({"at":now,"ticker":ticker,"contract":key,"action":"skip","reason":"risk budget below one contract","strategy_version":CURRENT_STRATEGY_VERSION})
+            state["decisions"].append({
+                "at":now,"ticker":ticker,"contract":key,"action":"skip",
+                "score":score,
+                "reason":"position exceeds autonomous risk/premium budget",
+                "risk_budget":risk_budget,"premium_cap":premium_cap,
+                "planned_loss_per_contract":planned_loss_per_contract,
+                "strategy_version":CURRENT_STRATEGY_VERSION,
+            })
             continue
-        cost=entry*100*qty
+        cost=premium_per_contract*qty
         state["cash"]-=cost
         pos={"id":f"{now}:{key}","ticker":ticker,"contract_key":key,"type":q["type"],
              "strike":q["strike"],"expiration":q["expiration"],"qty":qty,
@@ -356,6 +368,8 @@ def run_ai_paper_portfolio(snapshot,state=None,max_positions=3,risk_per_trade=.0
         "paper_only":True,
         "max_positions":max_positions,
         "risk_per_trade":risk_per_trade,
+        "max_premium_fraction":max_premium_fraction,
+        "stop_loss_fraction":stop_loss_fraction,
         "min_score":min_score,
         "min_dte":min_dte,
         "max_dte":max_dte,
