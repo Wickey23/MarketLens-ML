@@ -15,8 +15,6 @@ on:
         description: "Optional ticker to refresh"
         required: false
         type: string
-  schedule:
-    - cron: "*/5 13-21 * * 1-5"
 
 permissions:
   contents: write
