@@ -54,6 +54,8 @@ body{background:#000;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Se
 /* closer retail-broker spacing and hierarchy */
 .rhNav{height:60px}.rhBrand{font-size:20px}.rhSearch{height:38px;border-radius:20px}.rhTickerTabs{padding:10px 0}.rhAssetHead{padding:24px 0 16px}.rhAssetPrice{font-size:36px}.rhOptionsToolbar{padding-bottom:12px}.rhExpBtn{padding:7px 11px}.rhChainMeta{padding:9px 4px}.rhOptionRow{padding:12px 7px}.rhOptionPrice{border-radius:16px;padding:6px 10px}.rhContractSheet{max-width:720px}.rhOrderBox{max-width:520px;margin:0 auto}.rhReviewBtn{border-radius:24px}.brokerShell{max-width:720px}
 @media(max-width:760px){.bestTradeCard{grid-template-columns:1fr 1fr}.bestTradeActions{grid-column:1/-1;flex-direction:row}.bestTradeActions button{flex:1}.bestTradesOverlay{padding:8px}.bestTradesModal{margin:18px auto}.bestTradesHead{padding:18px 16px}.bestTradesList{padding:0 12px 12px}.tradeBell{width:36px;height:36px}}
+
+.researchMetaBar{display:flex;gap:10px;flex-wrap:wrap;padding:10px 0 14px;color:#7d7d7d;font-size:11px}.researchMetaBar span{border:1px solid #252525;border-radius:999px;padding:6px 9px;background:#090909}.marketVerdict{margin-top:12px;border:1px solid #262626;border-radius:14px;padding:18px;background:#080808}.verdictGrid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px}.verdictGrid>div{padding:14px;border:1px solid #202020;border-radius:12px;background:#0c0c0c}.verdictLabel{font-size:11px;color:#777;margin-bottom:5px}.verdictState{font-size:22px;font-weight:850;letter-spacing:-.4px}.verdictTrade{margin-top:14px}.verdictTradeCard{display:flex;justify-content:space-between;gap:18px;align-items:center;border:1px solid #213221;background:#071007;border-radius:12px;padding:14px}.verdictTradeTitle{font-size:17px;font-weight:850}.verdictTradeMeta{font-size:11px;color:#8a8a8a;margin-top:4px}.verdictTradeActions{display:flex;gap:8px}.verdictTradeActions button{border-radius:18px;padding:8px 12px;font-weight:800;cursor:pointer}.verdictTradePrimary{border:0;background:#00c805;color:#000}.verdictTradeSecondary{border:1px solid #333;background:#111;color:#fff}.verdictChange{margin-top:14px;padding-top:12px;border-top:1px solid #1f1f1f}.modelAgreementNote{margin-top:4px;color:#8b8b8b;font-size:10px}@media(max-width:700px){.verdictGrid{grid-template-columns:1fr}.verdictTradeCard{display:block}.verdictTradeActions{margin-top:12px}}
 </style>
 </head>
 <body><main class="w">
@@ -83,7 +85,9 @@ body{background:#000;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Se
   <button class="tab" onclick="showView('ai',this)">AI Portfolio</button>
 </div>
 <div class="tickerTabs rhTickerTabs" id="tabs"></div>
-<section id="researchView" class="view"><div class="workspaceHead"><div><h2>Research overview</h2><p class="sub">Understand the underlying before choosing a contract.</p></div><span class="statusPill"><span class="dot"></span>Research data</span></div><div class="hint"><b>Start here.</b> A high model percentage is not enough by itself. Check Decision Evidence and the out-of-sample metrics before interpreting the signal.</div>
+<section id="researchView" class="view"><div class="workspaceHead"><div><h2>Research overview</h2><p class="sub">Understand the underlying before choosing a contract.</p></div><span class="statusPill"><span class="dot"></span><span id="researchMarketState">Research data</span></span></div>
+<div class="researchMetaBar"><span id="researchUpdated">Research model: —</span><span id="marketQuoteUpdated">Market quote: —</span><span id="marketSourceState">Data source: —</span></div>
+<div class="hint"><b>Start here.</b> A high model percentage is not enough by itself. Check Decision Evidence and the out-of-sample metrics before interpreting the signal.</div>
 <section class="grid">
 <div class="card"><div class="label">LATEST UNDERLYING PRICE</div><div class="value" id="price">—</div><div class="sub" id="returns">—</div><div class="sub" id="liveQuoteStatus">Scheduled snapshot</div></div>
 <div class="card"><div class="label">5-DAY UP MODEL OUTPUT</div><div class="value" id="prob">—</div><div class="sub">Model output, not a guaranteed probability</div></div>
@@ -104,6 +108,15 @@ body{background:#000;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Se
 <section class="grid2" style="margin-top:12px">
 <div class="box"><div class="label">EARNINGS & CATALYST RISK</div><div class="value" id="earnings" style="font-size:20px">—</div><div class="sub" id="catalysts">—</div></div>
 <div class="box"><div class="label">RECENT NEWS CONTEXT</div><div id="news"></div></div>
+</section>
+<section class="marketVerdict" id="marketVerdict">
+<div class="label">MARKETLENS VERDICT</div>
+<div class="verdictGrid">
+<div><div class="verdictLabel">Underlying</div><div class="verdictState" id="verdictUnderlying">—</div><div class="sub" id="verdictUnderlyingWhy">—</div></div>
+<div><div class="verdictLabel">Options opportunity</div><div class="verdictState" id="verdictOptions">—</div><div class="sub" id="verdictOptionsWhy">—</div></div>
+</div>
+<div class="verdictTrade" id="verdictTrade"></div>
+<div class="verdictChange"><div class="label">WHAT WOULD CHANGE THE DECISION</div><div id="verdictTriggers" class="sub">—</div></div>
 </section>
 <section class="box table"><div class="label">OUT-OF-SAMPLE WALK-FORWARD METRICS</div>
 <table><thead><tr><th>Model</th><th>Accuracy</th><th>F1</th><th>ROC AUC</th><th>Brier ↓</th><th>N</th></tr></thead><tbody id="metrics"></tbody></table></section>
@@ -556,19 +569,27 @@ function showView(v,b){
 }
 async function runResearch(ticker=null){
   const b=document.getElementById('runBtn'),s=document.getElementById('runStatus');
-  b.disabled=true;s.textContent='Starting…';
+  b.disabled=true;s.textContent='Refreshing…';
   const t=ticker || (C&&C.ticker) || '';
+  let dispatched=false;
   try{
     const r=await controlledFetch('/api/run-research',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticker:t})});
-    const j=await r.json(); s.textContent=r.ok?('Fast refresh queued '+(t||'core')+' ✓'):(j.error||'Failed');
-    if(r.ok){
-      setTimeout(()=>s.textContent='Market/options refresh running…',1700);
-      const start=P&&P.generated_at;
-      let tries=0;
-      const poll=setInterval(async()=>{tries++;try{const rr=await fetch('/api/data',{cache:'no-store'}),nn=await rr.json();if(nn.generated_at!==start){clearInterval(poll);P=nn;await reloadData(t||null);s.textContent='Fresh data loaded ✓'}}catch(e){}if(tries>=30){clearInterval(poll);s.textContent='Refresh queued — check shortly'}},10000);
+    const j=await r.json().catch(()=>({}));
+    if(r.ok){dispatched=true;s.textContent='Full research refresh queued ✓'}
+    else if(r.status===503 && (j.error||'').includes('Server trigger is not configured')){
+      s.textContent='Refreshing live market data…';
+    }else if(r.status===401){
+      s.textContent=j.error||'Control authorization required';
+    }else{
+      s.textContent=j.error||'Using scheduled research refresh';
     }
-  }catch(e){s.textContent='Failed'}
-  finally{setTimeout(()=>b.disabled=false,3500)}
+  }catch(e){s.textContent='Refreshing latest available data…'}
+  try{
+    await reloadData(t||null);
+    if(C){await refreshLiveQuote();await refreshLiveOptions();}
+    s.textContent=dispatched?'Research queued · live data refreshed ✓':'Live data refreshed · full research runs automatically every 5 min';
+  }catch(e){s.textContent=dispatched?'Research queued':'Latest research will refresh automatically'}
+  finally{setTimeout(()=>b.disabled=false,1500)}
 }
 function analyzeTicker(){
   const t=tickerInput.value.trim().toUpperCase();
@@ -613,15 +634,50 @@ function renderResearch(){
   models.innerHTML=Object.entries(C.model_probabilities||{}).map(([k,v])=>'<div class="kv"><span>'+esc(k.replaceAll('_',' '))+'</span><b>'+pc(v)+'</b></div>').join('');
   const e=C.evidence||{},s=C.similar_setups||{};estate.textContent=e.state||'Awaiting evidence';evidenceNote.textContent=(e.validation_quality||'Validation pending')+' · mean AUC '+(e.mean_roc_auc==null?'—':num(e.mean_roc_auc,3));
   const lci=e.historical_lift_ci95||[null,null];
-  evidenceMore.innerHTML='<div class="kv"><span>Model agreement</span><b>'+pc(e.model_agreement)+'</b></div><div class="kv"><span>Comparable sample</span><b>'+(e.similar_sample_size||0)+'</b></div><div class="kv"><span>Lift 95% interval</span><b>'+((lci[0]==null||lci[1]==null)?'—':((lci[0]*100).toFixed(1)+' to '+(lci[1]*100).toFixed(1)+' pp'))+'</b></div>';
+  evidenceMore.innerHTML='<div class="kv"><span>Model agreement</span><b>'+pc(e.model_agreement)+'</b></div><div class="modelAgreementNote">High agreement does not imply high accuracy; walk-forward metrics determine whether the models have predictive edge.</div><div class="kv"><span>Comparable sample</span><b>'+(e.similar_sample_size||0)+'</b></div><div class="kv"><span>Lift 95% interval</span><b>'+((lci[0]==null||lci[1]==null)?'—':((lci[0]*100).toFixed(1)+' to '+(lci[1]*100).toFixed(1)+' pp'))+'</b></div>';
   base.textContent=pc(C.base_up_rate);simrate.textContent=pc(s.actual_up_rate);simn.textContent=(s.observations||0)+' comparable observations';simret.textContent=pc(s.mean_forward_return);lift.textContent=(s.actual_up_rate==null||C.base_up_rate==null)?'—':((s.actual_up_rate-C.base_up_rate)*100).toFixed(1)+' pp';
   plain.innerHTML=(C.plain_language||['Awaiting refreshed research.']).map(x=>'<li>'+esc(x)+'</li>').join('');
   const ctx=C.company_context||{},er=ctx.earnings||{};earnings.textContent=er.days_to_earnings==null?'No upcoming date available':(er.days_to_earnings+' days to earnings');const ns=ctx.news_signal||{};catalysts.textContent=(ctx.catalyst_flags||[]).length?'Headline themes: '+ctx.catalyst_flags.join(', ')+' · news signal '+(ns.score==null?'—':((ns.score>=0?'+':'')+num(ns.score,2)))+' · confidence '+pc(ns.confidence):(ctx.news_note||'No catalyst themes detected in the current headline set.');
-  news.innerHTML=(ctx.news||[]).slice(0,5).map(n=>'<div class="newsitem">'+(n.url?'<a target="_blank" rel="noopener" href="'+safeUrl(n.url)+'">'+esc(n.title)+'</a>':'<span>'+esc(n.title)+'</span>')+'<div class="sub">'+esc(n.publisher||'')+(n.published_at?' · '+esc(String(n.published_at).slice(0,10)):'')+(n.direction!=null?' · signal '+(Number(n.direction)>=0?'+':'')+num(n.direction,1):'')+'</div></div>').join('')||'<div class="empty">No recent headlines in this research snapshot.</div>';
+  const newsRows=(ctx.news||[]).slice(0,5);news.innerHTML=newsRows.length?newsRows.map(n=>'<div class="newsitem">'+(n.url?'<a target="_blank" rel="noopener" href="'+safeUrl(n.url)+'">'+esc(n.title)+'</a>':'<span>'+esc(n.title)+'</span>')+'<div class="sub">'+esc(n.publisher||'')+(n.published_at?' · '+esc(String(n.published_at).slice(0,10)):'')+(n.direction!=null?' · signal '+(Number(n.direction)>=0?'+':'')+num(n.direction,1):'')+'</div></div>').join(''):'<div class="empty">No material recent catalyst found in this snapshot.</div>';
   metrics.innerHTML=(C.metrics||[]).map(m=>'<tr><td>'+esc(m.model.replaceAll('_',' '))+'</td><td>'+pc(m.accuracy)+'</td><td>'+pc(m.f1)+'</td><td>'+num(m.roc_auc,3)+'</td><td>'+num(m.brier,3)+'</td><td>'+m.observations+'</td></tr>').join('');
+  renderResearchMetaAndVerdict();
   draw();
 }
 
+function renderResearchMetaAndVerdict(){
+ if(!C||!P)return;
+ const mc=P.market_clock||{},state=String(mc.state||'unknown').toUpperCase();
+ const rEl=document.getElementById('researchUpdated'),qEl=document.getElementById('marketQuoteUpdated'),sEl=document.getElementById('marketSourceState'),mEl=document.getElementById('researchMarketState');
+ const researchTime=C.research_refreshed_at||P.generated_at,quoteTime=C.live_quote_time||C.fast_refreshed_at||C.as_of||null;
+ if(rEl)rEl.textContent='Research model: '+(researchTime?new Date(researchTime).toLocaleString():'—');
+ if(qEl)qEl.textContent='Market quote: '+(quoteTime?new Date(quoteTime).toLocaleString():'latest snapshot');
+ if(sEl)sEl.textContent='Data source: '+esc(C.live_quote_provider||(((C.options||{}).chain||{}).source)||'MarketLens snapshot');
+ if(mEl)mEl.textContent='Market '+state;
+ const e=C.evidence||{},prob=Number(C.probability_5d_up),auc=Number(e.mean_roc_auc);
+ let underlying='NEUTRAL / WATCH',why='Directional edge is not sufficiently validated.';
+ if(Number.isFinite(auc)&&auc>=.53&&Number.isFinite(prob)){if(prob>=.56){underlying='BULLISH';why='Validated directional evidence currently favors upside.'}else if(prob<=.44){underlying='BEARISH';why='Validated directional evidence currently favors downside.'}}
+ document.getElementById('verdictUnderlying').textContent=underlying;
+ document.getElementById('verdictUnderlying').className='verdictState '+(underlying==='BULLISH'?'good':underlying==='BEARISH'?'bad':'warn');
+ document.getElementById('verdictUnderlyingWhy').textContent=why;
+ const radar=((C.options||{}).opportunity_radar)||{},g=radar.guidance||{},pick=g.best_overall||null;
+ const vo=document.getElementById('verdictOptions'),vw=document.getElementById('verdictOptionsWhy'),vt=document.getElementById('verdictTrade'),tr=document.getElementById('verdictTriggers');
+ if(pick&&g.state==='strong_candidates'){
+   const live=pick.execution_verified_for_forward_test===true;
+   vo.textContent=live?'STRONG / EXECUTION-VERIFIED':'STRONG RESEARCH / WATCH';
+   vo.className='verdictState '+(live?'good':'warn');
+   vw.textContent=live?'A contract clears the research and live-execution gates.':'Research is strong, but the current quote is not verified for execution.';
+   const score=pick.combined_evidence_score!=null?pick.combined_evidence_score:pick.score;
+   vt.innerHTML='<div class="verdictTradeCard"><div><div class="verdictTradeTitle">'+esc(C.ticker)+' '+money(pick.strike)+' '+esc(String(pick.type||'').toUpperCase())+' · '+esc(pick.expiration)+'</div><div class="verdictTradeMeta">Evidence '+num(score,1)+'/100 · historical profit frequency '+pc(pick.prob_profit)+' · '+Number(pick.dte||0)+' DTE</div></div><div class="verdictTradeActions"><button class="verdictTradePrimary" onclick="analyzeRadarCandidate(\''+esc(pick.contract_symbol||'')+'\');showView(\'options\',document.querySelectorAll(\'.navtabs .tab\')[1])">View trade</button><button class="verdictTradeSecondary" onclick="prepareRadarPaper(\''+esc(pick.contract_symbol||'')+'\')">Paper test</button></div></div>';
+   tr.textContent=live?'A material deterioration in score, liquidity, spread, news context or the underlying thesis would change the decision.':'A fresh execution-grade quote is the main missing condition; price, IV or spread changes can also invalidate the setup.';
+ }else{
+   const watch=(radar.watchlist||[]).length;
+   vo.textContent=watch?'WATCHLIST ONLY':'NO STRONG OPTION';
+   vo.className='verdictState warn';
+   vw.textContent=watch?watch+' contract'+(watch===1?' is':'s are')+' interesting, but none clears all quality and execution gates.':'No screened contract clears the full evidence gates.';
+   vt.innerHTML='';
+   tr.textContent='A better contract price/spread, fresh execution-grade data, stronger historical payoff evidence, clearer directional confirmation, or a material catalyst could change the decision.';
+ }
+}
 function radarCandidates(){
   const r=((C.options||{}).opportunity_radar)||{};
   const all=[...(r.opportunities||[]),...(r.watchlist||[])],seen=new Set();
