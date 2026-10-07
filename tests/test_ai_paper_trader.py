@@ -13,7 +13,7 @@ from src.ai_paper_trader import (
 TEST_NOW=datetime(2026,9,24,15,0,tzinfo=timezone.utc)
 
 def snap():
-    q={"contract_symbol":"ABC1","type":"call","expiration":"2099-12-31","dte":14,"strike":100,
+    q={"contract_symbol":"ABC1","type":"call","expiration":"2099-12-31","dte":30,"strike":100,
        "ask":1.0,"bid":.95,"mid":.975,"iv":.25,"spread_pct":.05,"theta_cost_pct_per_day":.01,"last_trade":TEST_NOW.isoformat(),"quote_age_hours":0.0}
     r={"contract_symbol":"ABC1","type":"call","expiration":"2099-12-31","dte":14,"strike":100,
        "score":80,"prob_profit":.62,"expected_pnl_per_contract":18,"historical_scope":"same regime",
