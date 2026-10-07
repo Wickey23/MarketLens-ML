@@ -786,7 +786,7 @@ def _merge_option_snapshots(ticker, snapshots, annual_rv):
     }
 
 
-def option_snapshot(ticker:str, spot:float, annual_rv:float|None=None, max_expiries:int=6, strikes_each_side:int=8):
+def option_snapshot(ticker:str, spot:float, annual_rv:float|None=None, max_expiries:int=6, strikes_each_side:int=16):
     """Aggregate configured option providers and select the freshest trustworthy quote.
 
     Provider authority beats raw timestamp freshness: consolidated real-time OPRA
