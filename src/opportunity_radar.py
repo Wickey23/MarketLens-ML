@@ -72,6 +72,7 @@ def _guidance_payload(rows, evidence, current_regime=None, context=None, relativ
             "best_overall":None,
             "highest_upside":None,
             "higher_probability":None,
+            "ranked_candidates":[],
             "note":"No contract currently clears the full quality, execution and historical-evidence gates.",
         }
 
@@ -311,11 +312,18 @@ def _guidance_payload(rows, evidence, current_regime=None, context=None, relativ
     probability=max(enriched,key=lambda r:((r.get("prob_profit_ci95") or [0])[0] or 0,
                                           r.get("prob_profit") or 0,
                                           r.get("combined_evidence_score") or 0))
+    ranked_candidates=sorted(
+        enriched,
+        key=lambda r:(float(r.get("combined_evidence_score") or r.get("score") or 0),
+                      float(r.get("trimmed_mean_return_on_debit") if r.get("trimmed_mean_return_on_debit") is not None else (r.get("expected_return_on_debit") or -1e9))),
+        reverse=True,
+    )
     return {
         "state":"strong_candidates",
         "best_overall":best,
         "highest_upside":upside,
         "higher_probability":probability,
+        "ranked_candidates":ranked_candidates[:40],
         "note":"Candidates are ranked from current execution quality plus historical replay and validated evidence. They are not guaranteed future-return estimates.",
     }
 
@@ -446,11 +454,11 @@ def build_opportunity_radar(raw, contracts, regime_series, current_regime, evide
     rows.sort(key=lambda x:(x["state"]=="investigate",x["score"],x.get("expected_pnl_per_contract") or -1e9),reverse=True)
     surfaced=[x for x in rows if x["state"]=="investigate"][:limit]
     watch=[x for x in rows if x["state"]=="watch"][:limit]
-    autonomous_candidates=[
-        x for x in rows
-        if x["state"]=="investigate" and x.get("dte") is not None and 21<=int(x.get("dte"))<=120
-    ][:max(limit,24)]
     guidance=_guidance_payload(rows,evidence,current_regime=current_regime,context=context,relative_strength=relative_strength,model_probability=model_probability,options_summary=options_summary)
+    autonomous_candidates=[
+        x for x in (guidance.get("ranked_candidates") or [])
+        if x.get("dte") is not None and 21<=int(x.get("dte"))<=120
+    ][:max(limit,24)]
     return {
         "state":"opportunities_detected" if surfaced else "no_strong_setup",
         "opportunities":surfaced,
