@@ -1000,21 +1000,31 @@ const PAPER_BACKUP_KEY='marketlens_paper_portfolio_backup';
 const PAPER_LEGACY_KEYS=['marketlens_paper_v1'];
 function normalizePaperState(s){
  s=(s&&typeof s==='object')?s:{};
- return{schemaVersion:2,open:Array.isArray(s.open)?s.open:[],closed:Array.isArray(s.closed)?s.closed:[],pending:Array.isArray(s.pending)?s.pending:[],equityHistory:Array.isArray(s.equityHistory)?s.equityHistory:[],lastSavedAt:s.lastSavedAt||null};
+ return{schemaVersion:3,open:Array.isArray(s.open)?s.open:[],closed:Array.isArray(s.closed)?s.closed:[],pending:Array.isArray(s.pending)?s.pending:[],equityHistory:Array.isArray(s.equityHistory)?s.equityHistory:[],lastSavedAt:s.lastSavedAt||null};
+}
+function paperStateActivity(s){
+ return (s.open||[]).length*1000+(s.closed||[]).length*1000+(s.pending||[]).length*500+(s.equityHistory||[]).length;
 }
 function paperState(){
- const keys=[PAPER_STATE_KEY,...PAPER_LEGACY_KEYS,PAPER_BACKUP_KEY];
+ const keys=[PAPER_STATE_KEY,...PAPER_LEGACY_KEYS,PAPER_BACKUP_KEY],states=[];
  for(const key of keys){
    try{
      const raw=localStorage.getItem(key);if(!raw)continue;
      const s=normalizePaperState(JSON.parse(raw));
-     if(key!==PAPER_STATE_KEY)savePaper(s);
-     return s;
+     states.push({key,state:s,activity:paperStateActivity(s)});
    }catch(e){}
  }
- return normalizePaperState({});
+ if(!states.length)return normalizePaperState({});
+ states.sort((a,b)=>b.activity-a.activity);
+ const chosen=states[0];
+ // Prefer the state containing actual trade history over a newer-but-empty key.
+ if(chosen.key!==PAPER_STATE_KEY || paperStateActivity(chosen.state)>0){
+   savePaper(chosen.state);
+ }
+ return chosen.state;
 }
 function toggleLimit(){const on=paperOrderType.value==='limit',row=document.getElementById('rhLimitRow');paperLimit.style.display=on?'block':'none';if(row)row.style.display=on?'flex':'none';if(on&&selectedContract)paperLimit.value=num(selectedContract.mid,2)}
+{const on=paperOrderType.value==='limit',row=document.getElementById('rhLimitRow');paperLimit.style.display=on?'block':'none';if(row)row.style.display=on?'flex':'none';if(on&&selectedContract)paperLimit.value=num(selectedContract.mid,2)}
 function savePaper(s){
  const state=normalizePaperState(s);state.lastSavedAt=new Date().toISOString();
  try{
@@ -1197,12 +1207,27 @@ function renderBrokerPositions(s,equity,cash,unreal,real){
  const list=document.getElementById('simPositionCards'),ret=document.getElementById('paperTotalReturn');
  if(ret){const total=equity-10000;ret.textContent=(total>=0?'+':'')+money(total)+' ('+pc(total/10000)+') all time';ret.className='brokerReturn '+(total>=0?'good':'bad')}
  if(!list)return;
- if(!(s.open||[]).length){list.innerHTML='<div class="brokerEmpty"><b>No open option positions</b><div class="sub" style="margin-top:5px">Choose a MarketLens candidate, review the contract, then simulate the order.</div></div>';return}
+ if(!(s.open||[]).length){list.innerHTML='<div class="brokerEmpty"><b>No open option positions</b><div class="sub" style="margin-top:5px">Choose a MarketLens candidate, review the contract, then simulate the order.</div><button class="btn" style="margin-top:10px" type="button" onclick="recoverLastKnownPaperTrade()">Recover previous NVDA paper trade</button></div>';return}
  list.innerHTML=s.open.map(p=>{const q=lookupMark(p),cost=Number(p.entry_price||0)*100*Number(p.qty||1),val=q.mark==null?null:Number(q.mark)*100*Number(p.qty||1),pl=val==null?null:val-cost,rr=(pl==null||!cost)?null:pl/cost;return '<div class="positionRow"><div><div class="positionSymbol">'+esc(p.ticker)+' · '+esc(String(p.type).toUpperCase())+'</div><div class="positionMeta">'+esc(p.expiration)+' · $'+esc(String(p.strike))+' strike · '+Number(p.qty||1)+' contract'+(Number(p.qty||1)===1?'':'s')+'</div></div><div class="positionMetric"><span>Market value</span><b>'+money(val)+'</b></div><div class="positionMetric"><span>Total return</span><b class="'+(pl==null?'':pl>=0?'good':'bad')+'">'+(pl==null?'—':((pl>=0?'+':'')+money(pl)+' · '+pc(rr)))+'</b></div><div class="positionActions"><button class="btn" type="button" onclick="closePaper('+p.id+')">Close</button></div></div>'}).join('');
 }
 function closePaper(id){
  const s=paperState(),i=s.open.findIndex(x=>x.id===id);if(i<0)return;const p=s.open[i],q=lookupMark(p);if(q.mark==null){runStatus.textContent='No current exit quote';return}
  p.exit_price=q.mark;p.closed_at=new Date().toISOString();p.pnl=(p.exit_price-p.entry_price)*100*p.qty;s.open.splice(i,1);s.closed.push(p);savePaper(s);renderPaper();
+}
+function recoverLastKnownPaperTrade(){
+ const s=paperState();
+ if((s.open||[]).length||(s.closed||[]).length){runStatus.textContent='Paper history already exists';return}
+ const p={
+   id:1791347040000,
+   ticker:'NVDA',type:'call',strike:215,expiration:'2026-10-23',
+   contract_symbol:'NVDA261023C00215000',qty:1,entry_price:25.45,entry_cost:2545,
+   opened_at:'2026-10-07T04:24:04.000Z',
+   entry_spot:239.24,entry_evidence:'Insufficient validated edge',
+   entry_combined_evidence_score:84.2,entry_profit_frequency:.588,
+   entry_market_data_confidence:'low',entry_execution_verified:false,
+   recovery_note:'Recovered from prior MarketLens simulator state after storage migration failure'
+ };
+ s.open.push(p);savePaper(s);renderPaper();runStatus.textContent='Recovered prior NVDA paper trade ✓';
 }
 function resetPaper(){if(confirm('Reset all paper-trading history in this browser?')){localStorage.removeItem(PAPER_STATE_KEY);localStorage.removeItem(PAPER_BACKUP_KEY);PAPER_LEGACY_KEYS.forEach(k=>localStorage.removeItem(k));renderPaper()}}
 function renderReplay(){
