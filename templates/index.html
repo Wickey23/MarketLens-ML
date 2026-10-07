@@ -1024,7 +1024,6 @@ function paperState(){
  return chosen.state;
 }
 function toggleLimit(){const on=paperOrderType.value==='limit',row=document.getElementById('rhLimitRow');paperLimit.style.display=on?'block':'none';if(row)row.style.display=on?'flex':'none';if(on&&selectedContract)paperLimit.value=num(selectedContract.mid,2)}
-{const on=paperOrderType.value==='limit',row=document.getElementById('rhLimitRow');paperLimit.style.display=on?'block':'none';if(row)row.style.display=on?'flex':'none';if(on&&selectedContract)paperLimit.value=num(selectedContract.mid,2)}
 function savePaper(s){
  const state=normalizePaperState(s);state.lastSavedAt=new Date().toISOString();
  try{
