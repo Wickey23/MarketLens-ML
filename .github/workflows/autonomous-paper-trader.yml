@@ -1,0 +1,56 @@
+name: autonomous-paper-trader
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "2-57/5 13-21 * * 1-5"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/autonomous-paper-trader.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: marketlens-data-writer
+  cancel-in-progress: false
+
+jobs:
+  autonomous-paper:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TRADIER_ACCESS_TOKEN: ${{ secrets.TRADIER_ACCESS_TOKEN }}
+      ALPACA_API_KEY_ID: ${{ secrets.ALPACA_API_KEY_ID }}
+      ALPACA_API_SECRET_KEY: ${{ secrets.ALPACA_API_SECRET_KEY }}
+      ALPACA_OPTIONS_FEED: ${{ secrets.ALPACA_OPTIONS_FEED }}
+      ALPACA_STOCK_FEED: ${{ secrets.ALPACA_STOCK_FEED }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Load persistent market and AI state
+        run: |
+          git fetch origin market-data
+          git show origin/market-data:data/dashboard.json > data/dashboard.json || true
+          git show origin/market-data:data/ai_paper_portfolio.json > data/ai_paper_portfolio.json || true
+      - run: pip install -r requirements-ml.txt
+      - name: Run market-wide autonomous paper cycle
+        run: python -m src.fast_refresh
+      - name: Persist market research and AI portfolio
+        run: |
+          cp data/dashboard.json /tmp/dashboard.json
+          cp data/ai_paper_portfolio.json /tmp/ai_paper_portfolio.json
+          git reset --hard
+          git fetch origin market-data
+          git checkout -B market-data origin/market-data
+          cp /tmp/dashboard.json data/dashboard.json
+          cp /tmp/ai_paper_portfolio.json data/ai_paper_portfolio.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f data/dashboard.json data/ai_paper_portfolio.json
+          git diff --cached --quiet || git commit -m "Run autonomous MarketLens paper-trading cycle"
+          git push origin HEAD:market-data
