@@ -212,7 +212,7 @@ body{background:#000;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Se
       <h2>Investing</h2>
       <div class="brokerEquity" id="paperEquity">—</div>
       <div class="brokerReturn" id="paperTotalReturn">—</div>
-      <div class="sub">Simulated account · no real orders are sent</div>
+      <div class="sub">Simulated account · no real orders are sent · portfolio history persists across app updates on this browser</div>
     </div>
     <div class="brokerPower">
       <span>Buying power</span>
@@ -266,7 +266,7 @@ body{background:#000;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Se
 </div>
 </section>
 
-<section id="aiView" class="view"><div class="workspaceHead"><div><h2>AI Portfolio</h2><p class="sub">Forward-test MarketLens decisions separately from your manual trades.</p></div></div><div class="hint"><b>Autonomous paper testing.</b> This account is separate from your Simulator. It records qualifying setups and why the system acted or stayed in cash. It does not place real brokerage orders.</div><div class="nextAction" id="aiRuntimeStatus"><div><b>Checking AI runtime…</b><div class="sub">Evaluating market session, data quality and current candidates.</div></div></div>
+<section id="aiView" class="view"><div class="workspaceHead"><div><h2>AI Portfolio</h2><p class="sub">Forward-test MarketLens decisions separately from your manual trades.</p></div></div><div class="hint"><b>Autonomous paper testing.</b> This account is separate from your Simulator. It records qualifying setups and why the system acted or stayed in cash. Open and closed trades are persisted independently from code deployments, so new MarketLens updates do not erase the portfolio. It does not place real brokerage orders.</div><div class="nextAction" id="aiRuntimeStatus"><div><b>Checking AI runtime…</b><div class="sub">Evaluating market session, data quality and current candidates.</div></div></div>
 <section class="grid"><div class="card"><div class="label">AI PAPER EQUITY</div><div class="value" id="aiEquity">—</div><div class="sub">Started with $10,000 simulated capital</div></div><div class="card"><div class="label">TOTAL P/L</div><div class="value" id="aiPnl">—</div></div><div class="card"><div class="label">WIN RATE</div><div class="value" id="aiWin">—</div><div class="sub" id="aiTrades">—</div></div><div class="card"><div class="label">MAX DRAWDOWN</div><div class="value" id="aiDd">—</div></div></section>
 <section class="grid2" style="margin-top:12px"><div class="box chart"><div class="label">AI PORTFOLIO EQUITY</div><canvas id="aiChart"></canvas></div><div class="box"><div class="label">OPPORTUNITY INBOX</div><div class="sub">Only setups clearing the research thresholds appear here.</div><div id="aiInbox"></div></div></section><section class="box" style="margin-top:12px"><div class="readinessGrid"><div><div class="label">PAPER-TO-REAL READINESS</div><div class="readinessState" id="readinessState">Collecting data</div><div class="sub" id="readinessNote">Forward evidence is still being accumulated.</div></div><div><div class="label">EVIDENCE CHECKS</div><div class="readinessChecks" id="readinessChecks"></div></div></div></section>
 <section class="box" style="margin-top:12px"><div class="label">FORWARD VALIDATION · CURRENT STRATEGY</div><div class="sub" id="aiValidationNote">Waiting for eligible real-time forward trades.</div><section class="grid3" style="margin-top:10px"><div class="card"><div class="label">ELIGIBLE CLOSED TRADES</div><div class="value" id="aiValTrades">0</div></div><div class="card"><div class="label">REALIZED VS REFERENCE WIN RATE</div><div class="value" id="aiValWinGap">—</div></div><div class="card"><div class="label">REALIZED VS HISTORICAL RETURN</div><div class="value" id="aiValPnlError">—</div></div></section><div id="aiValBuckets" style="margin-top:10px"></div></section>
@@ -938,9 +938,36 @@ function paperQuoteFor(p){
  if(live)return live;
  return lookupContract(p);
 }
-function paperState(){try{const s=JSON.parse(localStorage.getItem('marketlens_paper_v1'))||{};return{open:s.open||[],closed:s.closed||[],pending:s.pending||[],equityHistory:s.equityHistory||[]}}catch(e){return{open:[],closed:[],pending:[],equityHistory:[]}}}
+const PAPER_STATE_KEY='marketlens_paper_portfolio';
+const PAPER_BACKUP_KEY='marketlens_paper_portfolio_backup';
+const PAPER_LEGACY_KEYS=['marketlens_paper_v1'];
+function normalizePaperState(s){
+ s=(s&&typeof s==='object')?s:{};
+ return{schemaVersion:2,open:Array.isArray(s.open)?s.open:[],closed:Array.isArray(s.closed)?s.closed:[],pending:Array.isArray(s.pending)?s.pending:[],equityHistory:Array.isArray(s.equityHistory)?s.equityHistory:[],lastSavedAt:s.lastSavedAt||null};
+}
+function paperState(){
+ const keys=[PAPER_STATE_KEY,...PAPER_LEGACY_KEYS,PAPER_BACKUP_KEY];
+ for(const key of keys){
+   try{
+     const raw=localStorage.getItem(key);if(!raw)continue;
+     const s=normalizePaperState(JSON.parse(raw));
+     if(key!==PAPER_STATE_KEY)savePaper(s);
+     return s;
+   }catch(e){}
+ }
+ return normalizePaperState({});
+}
 function toggleLimit(){const on=paperOrderType.value==='limit',row=document.getElementById('rhLimitRow');paperLimit.style.display=on?'block':'none';if(row)row.style.display=on?'flex':'none';if(on&&selectedContract)paperLimit.value=num(selectedContract.mid,2)}
-function savePaper(s){localStorage.setItem('marketlens_paper_v1',JSON.stringify(s))}
+function savePaper(s){
+ const state=normalizePaperState(s);state.lastSavedAt=new Date().toISOString();
+ try{
+   const current=localStorage.getItem(PAPER_STATE_KEY);
+   if(current)localStorage.setItem(PAPER_BACKUP_KEY,current);
+   const payload=JSON.stringify(state);
+   localStorage.setItem(PAPER_STATE_KEY,payload);
+   PAPER_LEGACY_KEYS.forEach(k=>localStorage.setItem(k,payload));
+ }catch(e){console.warn('Paper portfolio persistence failed',e)}
+}
 function paperBuyingPower(s){
  let cash=10000;
  (s.open||[]).forEach(p=>cash-=Number(p.entry_price||0)*100*Number(p.qty||1));
@@ -1120,7 +1147,7 @@ function closePaper(id){
  const s=paperState(),i=s.open.findIndex(x=>x.id===id);if(i<0)return;const p=s.open[i],q=lookupMark(p);if(q.mark==null){runStatus.textContent='No current exit quote';return}
  p.exit_price=q.mark;p.closed_at=new Date().toISOString();p.pnl=(p.exit_price-p.entry_price)*100*p.qty;s.open.splice(i,1);s.closed.push(p);savePaper(s);renderPaper();
 }
-function resetPaper(){if(confirm('Reset all paper-trading history in this browser?')){localStorage.removeItem('marketlens_paper_v1');renderPaper()}}
+function resetPaper(){if(confirm('Reset all paper-trading history in this browser?')){localStorage.removeItem(PAPER_STATE_KEY);localStorage.removeItem(PAPER_BACKUP_KEY);PAPER_LEGACY_KEYS.forEach(k=>localStorage.removeItem(k));renderPaper()}}
 function renderReplay(){
  const h=C.history||[];replayDate.innerHTML=h.slice(0,-30).reverse().map(x=>'<option value="'+x.date+'">'+x.date+'</option>').join('');replay();
 }
