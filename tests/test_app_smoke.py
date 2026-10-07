@@ -14,7 +14,8 @@ def test_home_renders_template():
     r=client.get('/')
     assert r.status_code==200
     assert b'MarketLens' in r.data
-    assert b'Options Lab' in r.data
+    assert b'Options' in r.data
+    assert b'AI Portfolio' in r.data
 
 
 def test_data_route_is_no_cache(monkeypatch):
