@@ -352,6 +352,12 @@ def _yahoo_live_quote(ticker):
     }
 
 
+def _provider_error(exc):
+    code=getattr(exc,"code",None)
+    if code is not None:
+        return f"HTTP {code}"
+    return type(exc).__name__
+
 def live_quote(ticker):
     now = time.monotonic()
     cached = _live_quote_cache.get(ticker)
@@ -363,21 +369,21 @@ def live_quote(ticker):
     tradier_token=os.getenv("TRADIER_ACCESS_TOKEN")
     if tradier_token:
         try:candidates.append(_tradier_live_quote(ticker,tradier_token))
-        except Exception as exc:errors.append({"provider":"Tradier","error":type(exc).__name__})
+        except Exception as exc:errors.append({"provider":"Tradier","error":_provider_error(exc)})
 
     alpaca_key=os.getenv("ALPACA_API_KEY_ID") or os.getenv("APCA_API_KEY_ID")
     alpaca_secret=os.getenv("ALPACA_API_SECRET_KEY") or os.getenv("APCA_API_SECRET_KEY")
     if alpaca_key and alpaca_secret:
         try:candidates.append(_alpaca_live_quote(ticker,alpaca_key,alpaca_secret))
-        except Exception as exc:errors.append({"provider":"Alpaca","error":type(exc).__name__})
+        except Exception as exc:errors.append({"provider":"Alpaca","error":_provider_error(exc)})
 
     provider_key=os.getenv("FINNHUB_API_KEY")
     if provider_key:
         try:candidates.append(_finnhub_live_quote(ticker,provider_key))
-        except Exception as exc:errors.append({"provider":"Finnhub","error":type(exc).__name__})
+        except Exception as exc:errors.append({"provider":"Finnhub","error":_provider_error(exc)})
 
     try:candidates.append(_yahoo_live_quote(ticker))
-    except Exception as exc:errors.append({"provider":"Yahoo","error":type(exc).__name__})
+    except Exception as exc:errors.append({"provider":"Yahoo","error":_provider_error(exc)})
 
     out=choose_underlying_quote(candidates,now=datetime.now(timezone.utc))
     if out is None:
