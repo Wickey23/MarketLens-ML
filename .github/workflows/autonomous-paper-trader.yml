@@ -54,17 +54,42 @@ jobs:
               ("stock quote","https://api.tradier.com/v1/markets/quotes?"+urllib.parse.urlencode({"symbols":"SPY","greeks":"false"})),
               ("option expirations","https://api.tradier.com/v1/markets/options/expirations?"+urllib.parse.urlencode({"symbol":"SPY","includeAllRoots":"false"})),
           ]
-          failed=[]
+          results={}
           for label,url in checks:
               req=urllib.request.Request(url,headers=headers)
               try:
                   with urllib.request.urlopen(req,timeout=8) as r:
+                      results[label]=r.status
                       print(f"Tradier {label} preflight HTTP {r.status}")
               except urllib.error.HTTPError as e:
-                  failed.append((label,e.code))
+                  results[label]=e.code
                   print(f"::warning::Tradier {label} preflight HTTP {e.code}")
-          if failed:
-              print("::warning::Tradier market-data authentication/entitlement is incomplete; AI paper entries will remain blocked until quotes and options return HTTP 200")
+
+          live_ok = results.get("stock quote") == 200 and results.get("option expirations") == 200
+          sandbox_results={}
+          if not live_ok:
+              sandbox_checks=[
+                  ("stock quote","https://sandbox.tradier.com/v1/markets/quotes?"+urllib.parse.urlencode({"symbols":"SPY","greeks":"false"})),
+                  ("option expirations","https://sandbox.tradier.com/v1/markets/options/expirations?"+urllib.parse.urlencode({"symbol":"SPY","includeAllRoots":"false"})),
+              ]
+              for label,url in sandbox_checks:
+                  req=urllib.request.Request(url,headers=headers)
+                  try:
+                      with urllib.request.urlopen(req,timeout=8) as r:
+                          sandbox_results[label]=r.status
+                          print(f"Tradier sandbox {label} preflight HTTP {r.status}")
+                  except urllib.error.HTTPError as e:
+                      sandbox_results[label]=e.code
+                      print(f"Tradier sandbox {label} preflight HTTP {e.code}")
+
+              sandbox_ok = sandbox_results.get("stock quote") == 200 and sandbox_results.get("option expirations") == 200
+              if sandbox_ok:
+                  print("::error::TRADIER_ACCESS_TOKEN is valid for sandbox/delayed market data but not the production real-time market-data endpoints. Replace the GitHub Actions secret with the Production Token from Tradier API Settings.")
+              else:
+                  print("::error::Tradier production quotes/options are unauthorized and the same token is not usable on sandbox quotes/options. The token is invalid, expired, or the brokerage account lacks market-data entitlement.")
+
+          with open("/tmp/tradier_preflight.json","w") as fp:
+              json.dump({"live_ok": live_ok, "production": results, "sandbox": sandbox_results}, fp)
           PY
       - name: Run market-wide autonomous paper cycle
         run: python -m src.fast_refresh
@@ -82,3 +107,17 @@ jobs:
           git add -f data/dashboard.json data/ai_paper_portfolio.json
           git diff --cached --quiet || git commit -m "Run autonomous MarketLens paper-trading cycle"
           git push origin HEAD:market-data
+
+      - name: Verify execution-grade market-data readiness
+        run: |
+          python - <<'PY'
+          import json, os
+          path="/tmp/tradier_preflight.json"
+          if not os.path.exists(path):
+              raise SystemExit("Tradier preflight did not produce a readiness result")
+          with open(path) as fp:
+              result=json.load(fp)
+          if not result.get("live_ok"):
+              raise SystemExit("Execution-grade Tradier stock/options data is not authorized; autonomous paper entries remain blocked")
+          print("Execution-grade Tradier market data is authorized")
+          PY
