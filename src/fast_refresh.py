@@ -200,6 +200,19 @@ def main():
     p["market_clock"]=tradier_market_clock()
     p["fast_generated_at"]=p["generated_at"]
     p["errors"]=errors
+    execution_grade=sum(int((((x.get("options") or {}).get("chain") or {}).get("execution_grade_contracts") or 0)) for x in (p.get("tickers") or []))
+    provider_errors=[]
+    for x in p.get("tickers") or []:
+        chain=((x.get("options") or {}).get("chain") or {})
+        for err in chain.get("provider_errors") or []:
+            provider_errors.append({"ticker":x.get("ticker"),**err})
+    p["autonomous_runtime"]={
+        "refreshed_at":p["generated_at"],
+        "tickers_analyzed":len(p.get("tickers") or []),
+        "execution_grade_contracts":execution_grade,
+        "provider_errors":provider_errors[:50],
+        "tradier_clock":p["market_clock"],
+    }
     ai_state=run_ai_paper_portfolio(p,load_state())
     save_state(ai_state)
     p["ai_portfolio"]={"summary":performance_summary(ai_state),"strategy_summary":strategy_performance_summary(ai_state),"readiness":paper_to_real_readiness(ai_state),"forward_validation":forward_validation_summary(ai_state),"attribution":performance_attribution(ai_state),"learning":learning_profile(ai_state),"strategy_version":CURRENT_STRATEGY_VERSION,"updated_at":ai_state.get("updated_at"),"paper_market_session_open":ai_state.get("paper_market_session_open"),"autonomous":ai_state.get("autonomous",True),"autonomous_policy":ai_state.get("autonomous_policy",{}),"market_clock_state":ai_state.get("market_clock_state"),"open":ai_state.get("open",[]),"closed":ai_state.get("closed",[])[-100:],"decisions":ai_state.get("decisions",[])[-100:],"equity_history":ai_state.get("equity_history",[])[-300:]}
