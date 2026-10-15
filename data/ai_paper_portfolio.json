@@ -821,6 +821,17 @@
       "strategy_realized_pnl": 0,
       "strategy_unrealized_pnl": 0,
       "market_session_open": false
+    },
+    {
+      "at": "2026-10-15T17:40:15.772754+00:00",
+      "equity": 10015.0,
+      "cash": 10015.0,
+      "open_value": 0,
+      "strategy_version": "v4_autonomous_research_live",
+      "strategy_equity": 10000.0,
+      "strategy_realized_pnl": 0,
+      "strategy_unrealized_pnl": 0,
+      "market_session_open": true
     }
   ],
   "decisions": [
@@ -1056,13 +1067,31 @@
       "score": 75.3,
       "reason": "execution-grade real-time option data required for current strategy; DTE outside autonomous policy; option quote is stale or timestamp unavailable",
       "strategy_version": "v4_autonomous_research_live"
+    },
+    {
+      "at": "2026-10-15T17:40:15.772754+00:00",
+      "ticker": "SHOP",
+      "contract": "SHOP261030C00150000",
+      "action": "skip",
+      "score": 73.8,
+      "reason": "execution-grade real-time option data required for current strategy; DTE outside autonomous policy; option quote is stale or timestamp unavailable",
+      "strategy_version": "v4_autonomous_research_live"
+    },
+    {
+      "at": "2026-10-15T17:40:15.772754+00:00",
+      "ticker": "SHOP",
+      "contract": "SHOP261030C00142000",
+      "action": "skip",
+      "score": 73.7,
+      "reason": "execution-grade real-time option data required for current strategy; DTE outside autonomous policy; option quote is stale or timestamp unavailable",
+      "strategy_version": "v4_autonomous_research_live"
     }
   ],
-  "updated_at": "2026-10-15T01:14:24.021972+00:00",
-  "last_processed_snapshot": "2026-10-15T01:14:23.828146+00:00",
+  "updated_at": "2026-10-15T17:40:15.772754+00:00",
+  "last_processed_snapshot": "2026-10-15T17:40:15.694658+00:00",
   "strategy_version": "v4_autonomous_research_live",
-  "paper_market_session_open": false,
-  "market_clock_state": "closed",
+  "paper_market_session_open": true,
+  "market_clock_state": "open",
   "autonomous": true,
   "autonomous_policy": {
     "strategy_version": "v4_autonomous_research_live",
