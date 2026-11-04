@@ -1250,6 +1250,17 @@
       "strategy_realized_pnl": 0,
       "strategy_unrealized_pnl": 0,
       "market_session_open": false
+    },
+    {
+      "at": "2026-11-04T20:20:17.892088+00:00",
+      "equity": 10015.0,
+      "cash": 10015.0,
+      "open_value": 0,
+      "strategy_version": "v4_autonomous_research_live",
+      "strategy_equity": 10000.0,
+      "strategy_realized_pnl": 0,
+      "strategy_unrealized_pnl": 0,
+      "market_session_open": true
     }
   ],
   "decisions": [
@@ -1539,13 +1550,31 @@
       "score": 78.0,
       "reason": "execution-grade real-time option data required for current strategy; DTE outside autonomous policy; option quote is stale or timestamp unavailable",
       "strategy_version": "v4_autonomous_research_live"
+    },
+    {
+      "at": "2026-11-04T20:20:17.892088+00:00",
+      "ticker": "VOO",
+      "contract": "VOO261120C00660000",
+      "action": "skip",
+      "score": 75.8,
+      "reason": "execution-grade real-time option data required for current strategy; DTE outside autonomous policy; option quote is stale or timestamp unavailable",
+      "strategy_version": "v4_autonomous_research_live"
+    },
+    {
+      "at": "2026-11-04T20:20:17.892088+00:00",
+      "ticker": "NOW",
+      "contract": "NOW261120C00095000",
+      "action": "skip",
+      "score": 78.8,
+      "reason": "execution-grade real-time option data required for current strategy; DTE outside autonomous policy; option quote is stale or timestamp unavailable",
+      "strategy_version": "v4_autonomous_research_live"
     }
   ],
-  "updated_at": "2026-11-04T03:08:02.705754+00:00",
-  "last_processed_snapshot": "2026-11-04T03:08:02.564744+00:00",
+  "updated_at": "2026-11-04T20:20:17.892088+00:00",
+  "last_processed_snapshot": "2026-11-04T20:20:17.614657+00:00",
   "strategy_version": "v4_autonomous_research_live",
-  "paper_market_session_open": false,
-  "market_clock_state": "closed",
+  "paper_market_session_open": true,
+  "market_clock_state": "open",
   "autonomous": true,
   "autonomous_policy": {
     "strategy_version": "v4_autonomous_research_live",
