@@ -1426,6 +1426,17 @@
       "strategy_realized_pnl": 0,
       "strategy_unrealized_pnl": 0,
       "market_session_open": false
+    },
+    {
+      "at": "2026-11-13T03:31:44.940380+00:00",
+      "equity": 10015.0,
+      "cash": 10015.0,
+      "open_value": 0,
+      "strategy_version": "v4_autonomous_research_live",
+      "strategy_equity": 10000.0,
+      "strategy_realized_pnl": 0,
+      "strategy_unrealized_pnl": 0,
+      "market_session_open": false
     }
   ],
   "decisions": [
@@ -1753,8 +1764,8 @@
       "strategy_version": "v4_autonomous_research_live"
     }
   ],
-  "updated_at": "2026-11-13T01:30:02.424180+00:00",
-  "last_processed_snapshot": "2026-11-13T01:30:02.319687+00:00",
+  "updated_at": "2026-11-13T03:31:44.940380+00:00",
+  "last_processed_snapshot": "2026-11-13T03:31:44.658194+00:00",
   "strategy_version": "v4_autonomous_research_live",
   "paper_market_session_open": false,
   "market_clock_state": "closed",
